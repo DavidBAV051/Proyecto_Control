@@ -1,0 +1,110 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="Page-1" id="WNQQ6CNAQTFTbHKgdggc">
+    <mxGraphModel dx="1654" dy="878" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-13" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="370" width="560" x="80" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-12" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="120" width="560" x="80" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-5" edge="1" parent="1" source="LJhU6_6MdjXxtxiOHGkl-2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="LJhU6_6MdjXxtxiOHGkl-3" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-6" edge="1" parent="1" source="LJhU6_6MdjXxtxiOHGkl-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="LJhU6_6MdjXxtxiOHGkl-4" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="Camara Digital (Frame Capture)" vertex="1">
+          <mxGeometry height="60" width="120" x="100" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="Detección y extracción del Tag (Verde, Rojo y Bounding Box)" vertex="1">
+          <mxGeometry height="60" width="140" x="285" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-18" edge="1" parent="1" source="LJhU6_6MdjXxtxiOHGkl-4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.889;entryY=-0.067;entryDx=0;entryDy=0;entryPerimeter=0;" target="LJhU6_6MdjXxtxiOHGkl-11" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-19" connectable="0" parent="LJhU6_6MdjXxtxiOHGkl-18" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="UART&lt;div&gt;[Vx, Vy, Wz]&lt;/div&gt;" vertex="1">
+          <mxGeometry relative="1" x="-0.0911" as="geometry">
+            <mxPoint x="35" y="-7" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-4" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="Control Visual (Calculo de Errores: Vx, Vy, Wz)" vertex="1">
+          <mxGeometry height="60" width="130" x="490" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-7" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;rounded=0;" value="NIVEL SUPERIOR: VISIÓN Y GENERACIÓN DE CONSIGNAS (Raspberry Pi 4)" vertex="1">
+          <mxGeometry height="30" width="450" x="90" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-10" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;rounded=0;" value="NIVEL INFERIOR: CONTROL EN TIEMPO REAL Y SEGURIDAD (ESP32)" vertex="1">
+          <mxGeometry height="30" width="410" x="90" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-16" edge="1" parent="1" source="LJhU6_6MdjXxtxiOHGkl-11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="LJhU6_6MdjXxtxiOHGkl-14" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-20" connectable="0" parent="LJhU6_6MdjXxtxiOHGkl-16" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="Vector de velocidad validado" vertex="1">
+          <mxGeometry relative="1" x="-0.181" y="3" as="geometry">
+            <mxPoint x="77" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-11" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="MÁQUINA DE ESTADOS Y SEGURIDAD&lt;div&gt;(Lectura Sensores Obstáculos + Paro Preventivo de Emergencia)&amp;nbsp;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="500" x="110" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-17" edge="1" parent="1" source="LJhU6_6MdjXxtxiOHGkl-14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="LJhU6_6MdjXxtxiOHGkl-15" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-21" connectable="0" parent="LJhU6_6MdjXxtxiOHGkl-17" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="Setpoints individuales de velocidad" vertex="1">
+          <mxGeometry relative="1" x="-0.0857" y="-2" as="geometry">
+            <mxPoint x="92" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-14" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="CINEMÁTICA INVERSA MECANUM&lt;div&gt;Mapeo: [Vx, Vy, Wz] ---&amp;gt; [omega_1, omega_2, omega_3, omega_4]&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="500" x="110" y="415" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-26" edge="1" parent="1" source="LJhU6_6MdjXxtxiOHGkl-15" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="LJhU6_6MdjXxtxiOHGkl-22" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-35" connectable="0" parent="LJhU6_6MdjXxtxiOHGkl-26" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="Salidas PWM y Señales de Dirección" vertex="1">
+          <mxGeometry relative="1" x="0.3818" y="1" as="geometry">
+            <mxPoint x="99" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-15" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="4x CONTROLADORES PID DE VELOCIDAD&lt;div&gt;(Compensación de desvío con IMU + Feedback de Encoders Hall)&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="500" x="110" y="520" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-22" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="180" width="560" x="80" y="690" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-23" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;rounded=0;" value="PLANTA FÍSICA Y ACTUACIÓN&amp;nbsp;" vertex="1">
+          <mxGeometry height="30" width="410" x="90" y="700" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-28" edge="1" parent="1" source="LJhU6_6MdjXxtxiOHGkl-25" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="LJhU6_6MdjXxtxiOHGkl-27" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-25" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="Drivers de Motores&lt;div&gt;(DRV8871)&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="120" x="100" y="740" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-30" edge="1" parent="1" source="LJhU6_6MdjXxtxiOHGkl-27" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="LJhU6_6MdjXxtxiOHGkl-29" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-33" edge="1" parent="1" source="LJhU6_6MdjXxtxiOHGkl-27" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="LJhU6_6MdjXxtxiOHGkl-31">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-34" connectable="0" parent="LJhU6_6MdjXxtxiOHGkl-33" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="Feedback de Pulsos (Interrupciones)" vertex="1">
+          <mxGeometry relative="1" x="-0.637" y="-1" as="geometry">
+            <mxPoint x="96" y="-13" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-27" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="4x Motorreductores&amp;nbsp;DC con Encoders" vertex="1">
+          <mxGeometry height="60" width="120" x="285" y="740" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-29" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="4x Ruedas Mecanum" vertex="1">
+          <mxGeometry height="60" width="120" x="470" y="740" as="geometry" />
+        </mxCell>
+        <mxCell id="LJhU6_6MdjXxtxiOHGkl-31" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="[Lectura ESP32]" vertex="1">
+          <mxGeometry height="30" width="105" x="480" y="830" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
