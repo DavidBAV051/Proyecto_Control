@@ -1,18 +1,11 @@
 #pragma once
 #include <Arduino.h>
+#include "pins.h"
 
-// DRV8871 Driver Pins
-#define M1_IN1_PIN 18
-#define M1_IN2_PIN 19
-
-#define M2_IN1_PIN 26
-#define M2_IN2_PIN 27
-
-#define M3_IN1_PIN 23
-#define M3_IN2_PIN 25
-
-#define M4_IN1_PIN 4
-#define M4_IN2_PIN 5
+// DRV8871 driver + quadrature encoder pins are defined centrally in pins.h.
+// Motors 1 & 2 encoders use input-only GPIOs (34/35/36/39): require 10 kOhm
+// pull-ups to 3.3 V on each line (no internal pull-up available).
+// Motors 3 & 4 encoders use regular GPIOs: configure with INPUT_PULLUP in firmware.
 
 #define NUM_MOTORS 4
 

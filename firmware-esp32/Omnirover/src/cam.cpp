@@ -1,12 +1,13 @@
 #include <Arduino.h>
 #include "HUSKYLENS.h"
+#include "pins.h"
 
 HUSKYLENS huskylens;
 HardwareSerial HuskySerial(2);
 
 void initHuskyLens()
 {
-    HuskySerial.begin(9600, SERIAL_8N1, 16, 17);
+    HuskySerial.begin(9600, SERIAL_8N1, HUSKYLENS_RX2_PIN, HUSKYLENS_TX2_PIN);
 
     while (!huskylens.begin(HuskySerial))
     {

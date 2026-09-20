@@ -1,12 +1,13 @@
 #include "imu.h"
+#include "pins.h"
 
 static Adafruit_MPU6050 mpu;
 static IMU_Data current_data;
 static TwoWire I2C_IMU = TwoWire(0);
 
 bool init_IMU() {
-    // Bus I2C en los pines 21 (SDA) y 22 (SCL) a 400kHz (Fast Mode)
-    if (!I2C_IMU.begin(21, 22, 400000)) {
+    // Shared I2C bus (also used by the proximity sensor array) at 400kHz (Fast Mode)
+    if (!I2C_IMU.begin(I2C_SDA_PIN, I2C_SCL_PIN, 400000)) {
         return false;
     }
     
