@@ -2,6 +2,8 @@
 #include "cam.h"
 #include "imu.h"
 #include "motors.h"
+#include "web_server.h"
+#include "espnow_link.h"
 
 // for setMotorSpeed 0 and 1, negative values move forward, positive values move backward
 // for setMotorSpeed 2 and 3, negative values move backward, positive values move forward
@@ -69,6 +71,13 @@ void waitForSafeStart(uint32_t delayMs = SAFE_START_DELAY_MS)
 void setup()
 {
     Serial.begin(115200);
+
+    // Real-time dashboard (WiFi AP + web server, or ESP-NOW bridge depending
+    // on ROVER_LINK_MODE in include/net_config.h). Telemetry is placeholder
+    // data until the BNO/HuskyLens/encoders are wired in.
+    webServer_init();
+    espNow_init();
+
     // initHuskyLens();
     // if (init_IMU()) {
     //     Serial.println("¡IMU online y filtrada a 10Hz!");
