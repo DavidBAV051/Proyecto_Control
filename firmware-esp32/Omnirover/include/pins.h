@@ -7,7 +7,7 @@
 // Budget:
 //   Motors (4x IN1/IN2 + encoder A/B)........ 16 pins
 //   HuskyLens UART2 (RX2/TX2)................. 2 pins
-//   Shared I2C bus (BNO055 IMU + ToF array).... 2 pins
+//   Shared I2C bus (BNO08x IMU + ToF array).... 2 pins
 //   Proximity sensor XSHUT (address select).... 4 pins
 //   ------------------------------------------------
 //   Total...................................... 24 pins
@@ -16,8 +16,8 @@
 // ---- Motor 1 ----
 #define M1_IN1_PIN   18
 #define M1_IN2_PIN   19
-#define M1_ENC_A_PIN 34   // input-only, needs external 10k pull-up to 3.3V
-#define M1_ENC_B_PIN 35   // input-only, needs external 10k pull-up to 3.3V
+#define M1_ENC_A_PIN 13   
+#define M1_ENC_B_PIN 14   // strapping pin (must float/HIGH at boot); OK as encoder input w/ pull-up
 
 // ---- Motor 2 ----
 #define M2_IN1_PIN   26
@@ -28,21 +28,25 @@
 // ---- Motor 3 ----
 #define M3_IN1_PIN   23
 #define M3_IN2_PIN   25
-#define M3_ENC_A_PIN 13
-#define M3_ENC_B_PIN 14
+#define M3_ENC_A_PIN 4
+#define M3_ENC_B_PIN 5
 
 // ---- Motor 4 ----
 #define M4_IN1_PIN   32
 #define M4_IN2_PIN   33
-#define M4_ENC_A_PIN 4
-#define M4_ENC_B_PIN 5    // strapping pin (must float/HIGH at boot); OK as encoder input w/ pull-up
+#define M4_ENC_A_PIN 34  // input-only, needs external 10k pull-up to 3.3V//4 
+#define M4_ENC_B_PIN 35  // input-only, needs external 10k pull-up to 3.3V//5 
 
 // ---- HuskyLens (UART2) ----
 // Kept on the ESP32's default UART2 pins; do not reuse for encoders/GPIO.
 #define HUSKYLENS_RX2_PIN 16
 #define HUSKYLENS_TX2_PIN 17
 
-// ---- Shared I2C bus: BNO055 IMU + proximity (ToF) sensor array ----
+// ---- Shared I2C bus: GY-BNO08X IMU + proximity (ToF) sensor array ----
+// GY-BNO08X wiring for I2C mode (no extra GPIOs needed):
+//   PS1, PS0 -> GND (selects I2C protocol; module default)
+//   CS, RST  -> VCC (unused/inactive in I2C mode, per Adafruit reference wiring)
+//   ADO      -> GND (I2C address 0x4A; drive HIGH instead for 0x4B if it collides)
 #define I2C_SDA_PIN 21
 #define I2C_SCL_PIN 22
 
