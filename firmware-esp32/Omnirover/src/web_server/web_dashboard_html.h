@@ -11,59 +11,142 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Omnirover Dashboard</title>
 <style>
-  :root { color-scheme: dark; }
+  :root {
+    color-scheme: light;
+    --bg: #f5f5f7;
+    --card-bg: #ffffff;
+    --card-border: rgba(0, 0, 0, .06);
+    --text: #1d1d1f;
+    --text-secondary: #6e6e73;
+    --accent: #0071e3;
+    --accent-soft: rgba(0, 113, 227, .1);
+    --green: #34c759;
+    --green-soft: rgba(52, 199, 89, .12);
+    --red: #ff3b30;
+    --radius: 18px;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 12px 28px rgba(0, 0, 0, .06);
+  }
   * { box-sizing: border-box; }
   body {
-    margin: 0; padding: 16px;
-    background: #12161c; color: #e6e9ef;
-    font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    margin: 0;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
   header {
-    display: flex; align-items: center; gap: 10px;
-    margin-bottom: 16px; flex-wrap: wrap;
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px 24px;
+    background: rgba(245, 245, 247, .78);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid var(--card-border);
   }
-  h1 { font-size: 1.3rem; margin: 0; flex: 1; }
   .dot {
-    width: 12px; height: 12px; border-radius: 50%;
-    background: #e5484d; box-shadow: 0 0 6px #e5484d;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--red); box-shadow: 0 0 0 4px rgba(255, 59, 48, .15);
     transition: background .2s, box-shadow .2s;
+    flex-shrink: 0;
   }
-  .dot.online { background: #2fbf71; box-shadow: 0 0 6px #2fbf71; }
-  #uptime { color: #9aa4b2; font-size: .85rem; }
+  .dot.online { background: var(--green); box-shadow: 0 0 0 4px var(--green-soft); }
+  header h1 { font-size: 1.15rem; font-weight: 600; margin: 0; letter-spacing: -.01em; }
+  header .subtitle { font-size: .8rem; color: var(--text-secondary); }
+  header .titles { display: flex; flex-direction: column; flex: 1; }
+  #uptime {
+    color: var(--text-secondary); font-size: .8rem;
+    font-variant-numeric: tabular-nums;
+  }
+  main { max-width: 1080px; margin: 0 auto; padding: 24px; }
   .grid {
-    display: grid; gap: 14px;
+    display: grid; gap: 20px;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   }
   .card {
-    background: #1b212b; border: 1px solid #2a3240;
-    border-radius: 10px; padding: 14px 16px;
+    background: var(--card-bg); border: 1px solid var(--card-border);
+    border-radius: var(--radius); padding: 18px 20px;
+    box-shadow: var(--shadow);
   }
   .card h2 {
-    font-size: .95rem; margin: 0 0 10px; color: #9aa4b2;
-    text-transform: uppercase; letter-spacing: .04em;
+    font-size: .78rem; margin: 0 0 14px; color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: .06em; font-weight: 600;
   }
-  .rows { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
-  .rows div span { color: #9aa4b2; margin-right: 6px; }
-  .val { font-variant-numeric: tabular-nums; }
-  canvas { background: #0d1117; border-radius: 8px; display: block; }
+  .rows { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; }
+  .rows div {
+    display: flex; justify-content: space-between; align-items: baseline;
+    border-bottom: 1px solid var(--card-border); padding-bottom: 6px;
+  }
+  .rows div span:first-child { color: var(--text-secondary); font-size: .85rem; }
+  .val { font-variant-numeric: tabular-nums; font-weight: 500; }
+
+  /* Person tracking card */
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border-radius: 999px;
+    font-size: .85rem; font-weight: 600;
+    background: #f2f2f4; color: var(--text-secondary);
+    transition: background .2s, color .2s;
+  }
+  .status-pill.tracking { background: var(--green-soft); color: var(--green); }
+  .status-pill .status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .coords { display: flex; gap: 24px; margin-top: 18px; }
+  .coord { flex: 1; text-align: center; }
+  .coord .label { font-size: .75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .05em; }
+  .coord .value { font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  /* Encoders card */
   .enc-row {
-    display: grid; grid-template-columns: 70px 1fr 70px;
-    align-items: center; gap: 10px; margin-bottom: 8px;
+    display: grid; grid-template-columns: 44px 1fr 70px;
+    align-items: center; gap: 12px; margin-bottom: 10px;
   }
-  .bar { height: 10px; background: #0d1117; border-radius: 6px; overflow: hidden; }
-  .bar > i { display: block; height: 100%; background: #4f8cff; width: 50%; }
+  .enc-row:last-child { margin-bottom: 0; }
+  .enc-row span:first-child { font-weight: 600; font-size: .85rem; }
+  .bar { height: 8px; background: #eef0f2; border-radius: 6px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--accent); width: 50%; transition: width .2s; }
+
+  /* Rover photo card */
+  .robot-card { display: flex; flex-direction: column; }
+  .robot-photo {
+    position: relative; width: 100%; aspect-ratio: 4 / 3;
+    background: #f2f2f4; border-radius: 12px; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 14px;
+  }
+  .robot-photo img { width: 100%; height: 100%; object-fit: cover; display: none; }
+  .robot-placeholder { color: var(--text-secondary); font-size: .85rem; }
+  .btn {
+    display: inline-block; text-align: center; cursor: pointer;
+    background: var(--accent-soft); color: var(--accent);
+    font-weight: 600; font-size: .85rem;
+    padding: 9px 14px; border-radius: 10px;
+    transition: background .15s;
+  }
+  .btn:hover { background: rgba(0, 113, 227, .18); }
 </style>
 </head>
 <body>
 <header>
   <div class="dot" id="statusDot"></div>
-  <h1>Omnirover Dashboard</h1>
-  <div id="uptime">uptime: --</div>
+  <div class="titles">
+    <h1>Omnirover</h1>
+    <span class="subtitle">Live Dashboard</span>
+  </div>
+  <div id="uptime">uptime --</div>
 </header>
 
+<main>
 <div class="grid">
+  <div class="card robot-card">
+    <h2>Rover</h2>
+    <div class="robot-photo">
+      <img id="robotImg" alt="Rover photo">
+      <span class="robot-placeholder" id="robotPlaceholder">No photo yet</span>
+    </div>
+    <label class="btn" for="robotFile" id="robotUploadLabel">Change Photo</label>
+    <input type="file" id="robotFile" accept="image/*" hidden>
+  </div>
+
   <div class="card">
-    <h2>IMU (BNO / MPU)</h2>
+    <h2>IMU</h2>
     <div class="rows">
       <div><span>Accel X</span><span class="val" id="ax">--</span></div>
       <div><span>Accel Y</span><span class="val" id="ay">--</span></div>
@@ -76,13 +159,11 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
   </div>
 
   <div class="card">
-    <h2>Camera (HuskyLens)</h2>
-    <canvas id="camCanvas" width="280" height="210"></canvas>
-    <div class="rows" style="margin-top:10px">
-      <div><span>ID</span><span class="val" id="camId">--</span></div>
-      <div><span>Detected</span><span class="val" id="camValid">--</span></div>
-      <div><span>X</span><span class="val" id="camX">--</span></div>
-      <div><span>Y</span><span class="val" id="camY">--</span></div>
+    <h2>Person Tracking</h2>
+    <span class="status-pill" id="camStatus"><span class="status-dot"></span><span id="camStatusText">Not Tracking</span></span>
+    <div class="coords">
+      <div class="coord"><div class="label">X</div><div class="value" id="camX">--</div></div>
+      <div class="coord"><div class="label">Y</div><div class="value" id="camY">--</div></div>
     </div>
   </div>
 
@@ -91,55 +172,72 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
     <div id="encoders"></div>
   </div>
 </div>
+</main>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const encRows = [];
+
+// ---- Encoders module ----
 for (let i = 0; i < 4; i++) {
   const row = document.createElement('div');
   row.className = 'enc-row';
   row.innerHTML = `<span>M${i}</span><div class="bar"><i id="encBar${i}"></i></div><span class="val" id="encVal${i}">--</span>`;
   $('encoders').appendChild(row);
 }
-
-const ctx = $('camCanvas').getContext('2d');
-function drawCam(cam) {
-  ctx.clearRect(0, 0, 280, 210);
-  ctx.strokeStyle = '#2a3240';
-  ctx.strokeRect(0, 0, 280, 210);
-  if (!cam || !cam.valid) return;
-  const sx = 280 / 320, sy = 210 / 240; // HuskyLens frame is 320x240
-  const x = cam.x * sx, y = cam.y * sy;
-  const w = cam.w * sx, h = cam.h * sy;
-  ctx.strokeStyle = '#4f8cff';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(x - w / 2, y - h / 2, w, h);
-  ctx.fillStyle = '#4f8cff';
-  ctx.beginPath();
-  ctx.arc(x, y, 3, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function fmt(n) { return (typeof n === 'number') ? n.toFixed(2) : '--'; }
-
-function applyTelemetry(d) {
-  $('uptime').textContent = 'uptime: ' + (d.t / 1000).toFixed(1) + ' s';
-
-  $('ax').textContent = fmt(d.imu.ax); $('ay').textContent = fmt(d.imu.ay); $('az').textContent = fmt(d.imu.az);
-  $('gx').textContent = fmt(d.imu.gx); $('gy').textContent = fmt(d.imu.gy); $('gz').textContent = fmt(d.imu.gz);
-  $('temp').textContent = fmt(d.imu.temp) + ' C';
-
-  $('camId').textContent = d.cam.id;
-  $('camValid').textContent = d.cam.valid ? 'yes' : 'no';
-  $('camX').textContent = d.cam.x;
-  $('camY').textContent = d.cam.y;
-  drawCam(d.cam);
-
-  d.enc.forEach((e, i) => {
+function renderEncoders(enc) {
+  enc.forEach((e, i) => {
     $('encVal' + i).textContent = e.vel.toFixed(0) + ' rpm';
     const pct = Math.max(0, Math.min(100, 50 + e.vel / 2));
     $('encBar' + i).style.width = pct + '%';
   });
+}
+
+// ---- IMU module ----
+function fmt(n) { return (typeof n === 'number') ? n.toFixed(2) : '--'; }
+function renderIMU(imu) {
+  $('ax').textContent = fmt(imu.ax); $('ay').textContent = fmt(imu.ay); $('az').textContent = fmt(imu.az);
+  $('gx').textContent = fmt(imu.gx); $('gy').textContent = fmt(imu.gy); $('gz').textContent = fmt(imu.gz);
+  $('temp').textContent = fmt(imu.temp) + ' C';
+}
+
+// ---- Person tracking module ----
+function renderCam(cam) {
+  $('camStatus').classList.toggle('tracking', !!cam.valid);
+  $('camStatusText').textContent = cam.valid ? 'Tracking' : 'Not Tracking';
+  $('camX').textContent = cam.valid ? cam.x : '--';
+  $('camY').textContent = cam.valid ? cam.y : '--';
+}
+
+// ---- Rover photo module ----
+const robotImg = $('robotImg');
+const robotPlaceholder = $('robotPlaceholder');
+function refreshRobotPhoto() { robotImg.src = '/robot.jpg?t=' + Date.now(); }
+robotImg.onload = () => { robotImg.style.display = 'block'; robotPlaceholder.style.display = 'none'; };
+robotImg.onerror = () => { robotImg.style.display = 'none'; robotPlaceholder.style.display = 'block'; };
+refreshRobotPhoto();
+
+$('robotFile').addEventListener('change', async (evt) => {
+  const file = evt.target.files[0];
+  evt.target.value = '';
+  if (!file) return;
+  const label = $('robotUploadLabel');
+  const original = label.textContent;
+  label.textContent = 'Uploading…';
+  try {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    await fetch('/upload', { method: 'POST', body: form });
+    refreshRobotPhoto();
+  } catch (e) { /* upload failed, keep previous photo */ }
+  label.textContent = original;
+});
+
+// ---- Telemetry dispatch ----
+function applyTelemetry(d) {
+  $('uptime').textContent = 'uptime ' + (d.t / 1000).toFixed(1) + ' s';
+  renderIMU(d.imu);
+  renderCam(d.cam);
+  renderEncoders(d.enc);
 }
 
 let ws;
