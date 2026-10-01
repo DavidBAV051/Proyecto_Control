@@ -48,6 +48,7 @@ void telemetry_simulate() {
     imu.gyroY  = cosf(phase * 1.5f) * 10.0f;
     imu.gyroZ  = sinf(phase * 0.7f) * 5.0f;
     imu.temp   = 25.0f + sinf(phase * 0.1f) * 2.0f;
+    imu.yaw    = 70.0f * sinf(phase * 0.35f); // demo: rover slowly turning left/right
     telemetry_setIMU(imu);
 
     CamData cam;
@@ -85,6 +86,7 @@ String telemetry_toJson() {
     imu["gy"]   = snap.imu.gyroY;
     imu["gz"]   = snap.imu.gyroZ;
     imu["temp"] = snap.imu.temp;
+    imu["yaw"]  = snap.imu.yaw;
 
     JsonObject cam = doc["cam"].to<JsonObject>();
     cam["valid"] = snap.cam.valid;

@@ -11,6 +11,7 @@ struct IMU_Data {
     float gyroY;
     float gyroZ;
     float temp;
+    float yaw; // degrees, from BNO08x game rotation vector, 0 = heading at boot/last reset
 };
 
 // Funciones de la interfaz de la IMU

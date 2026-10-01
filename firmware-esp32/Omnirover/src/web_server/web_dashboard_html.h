@@ -70,12 +70,6 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
     font-size: .78rem; margin: 0 0 14px; color: var(--text-secondary);
     text-transform: uppercase; letter-spacing: .06em; font-weight: 600;
   }
-  .rows { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; }
-  .rows div {
-    display: flex; justify-content: space-between; align-items: baseline;
-    border-bottom: 1px solid var(--card-border); padding-bottom: 6px;
-  }
-  .rows div span:first-child { color: var(--text-secondary); font-size: .85rem; }
   .val { font-variant-numeric: tabular-nums; font-weight: 500; }
 
   /* Person tracking card */
@@ -88,10 +82,21 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
   }
   .status-pill.tracking { background: var(--green-soft); color: var(--green); }
   .status-pill .status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-  .coords { display: flex; gap: 24px; margin-top: 18px; }
+  .coords { display: flex; gap: 24px; margin-top: 14px; }
   .coord { flex: 1; text-align: center; }
   .coord .label { font-size: .75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .05em; }
   .coord .value { font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  /* Pose / tracking canvases */
+  canvas#poseCanvas, canvas#camCanvas {
+    width: 100%; height: auto; display: block;
+    border-radius: 12px; background: #f2f2f4; margin-top: 10px;
+  }
+  .pose-readout {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--card-border);
+  }
+  .pose-readout span:first-child { color: var(--text-secondary); font-size: .85rem; }
 
   /* Encoders card */
   .enc-row {
@@ -146,21 +151,15 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
   </div>
 
   <div class="card">
-    <h2>IMU</h2>
-    <div class="rows">
-      <div><span>Accel X</span><span class="val" id="ax">--</span></div>
-      <div><span>Accel Y</span><span class="val" id="ay">--</span></div>
-      <div><span>Accel Z</span><span class="val" id="az">--</span></div>
-      <div><span>Gyro X</span><span class="val" id="gx">--</span></div>
-      <div><span>Gyro Y</span><span class="val" id="gy">--</span></div>
-      <div><span>Gyro Z</span><span class="val" id="gz">--</span></div>
-      <div><span>Temp</span><span class="val" id="temp">--</span></div>
-    </div>
+    <h2>Rover Orientation &amp; Path</h2>
+    <canvas id="poseCanvas" width="260" height="220"></canvas>
+    <div class="pose-readout"><span>Yaw</span><span class="val" id="yawVal">--</span></div>
   </div>
 
   <div class="card">
     <h2>Person Tracking</h2>
     <span class="status-pill" id="camStatus"><span class="status-dot"></span><span id="camStatusText">Not Tracking</span></span>
+    <canvas id="camCanvas" width="260" height="195"></canvas>
     <div class="coords">
       <div class="coord"><div class="label">X</div><div class="value" id="camX">--</div></div>
       <div class="coord"><div class="label">Y</div><div class="value" id="camY">--</div></div>
@@ -192,20 +191,113 @@ function renderEncoders(enc) {
   });
 }
 
-// ---- IMU module ----
-function fmt(n) { return (typeof n === 'number') ? n.toFixed(2) : '--'; }
-function renderIMU(imu) {
-  $('ax').textContent = fmt(imu.ax); $('ay').textContent = fmt(imu.ay); $('az').textContent = fmt(imu.az);
-  $('gx').textContent = fmt(imu.gx); $('gy').textContent = fmt(imu.gy); $('gz').textContent = fmt(imu.gz);
-  $('temp').textContent = fmt(imu.temp) + ' C';
+// ---- Rover pose module (orientation + dead-reckoned path) ----
+const poseCanvas = $('poseCanvas');
+const poseCtx = poseCanvas.getContext('2d');
+let poseTrail = [];
+let poseWorldX = 0, poseWorldY = 0;
+let poseLastT = null;
+
+// Dead-reckons an approximate path from mean wheel speed (enc[].vel, rpm) and
+// IMU yaw. Units are arbitrary (not real-world distance) since wheel radius
+// isn't modeled here; good enough to visualize direction/shape of movement.
+function stepPoseTrail(imu, enc) {
+  const now = performance.now();
+  if (poseLastT === null) { poseLastT = now; return; }
+  const dt = Math.min(0.5, (now - poseLastT) / 1000);
+  poseLastT = now;
+  const avgVel = enc.reduce((sum, e) => sum + e.vel, 0) / (enc.length || 1);
+  const speed = avgVel * 0.02;
+  const yawRad = (imu.yaw || 0) * Math.PI / 180;
+  poseWorldX += speed * Math.cos(yawRad) * dt;
+  poseWorldY += speed * Math.sin(yawRad) * dt;
+  poseTrail.push({ x: poseWorldX, y: poseWorldY });
+  if (poseTrail.length > 400) poseTrail.shift();
 }
 
+function drawPose(imu) {
+  const w = poseCanvas.width, h = poseCanvas.height;
+  const cx = w / 2, cy = h / 2;
+  poseCtx.clearRect(0, 0, w, h);
+  poseCtx.fillStyle = '#f2f2f4';
+  poseCtx.fillRect(0, 0, w, h);
+
+  const pts = poseTrail.length ? poseTrail : [{ x: poseWorldX, y: poseWorldY }];
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const span = Math.max(maxX - minX, maxY - minY, 2);
+  const scale = (Math.min(w, h) - 50) / span;
+  const midX = (minX + maxX) / 2, midY = (minY + maxY) / 2;
+  const toCanvas = (x, y) => [cx + (x - midX) * scale, cy - (y - midY) * scale];
+
+  if (pts.length > 1) {
+    poseCtx.lineWidth = 2;
+    for (let i = 1; i < pts.length; i++) {
+      const [x0, y0] = toCanvas(pts[i - 1].x, pts[i - 1].y);
+      const [x1, y1] = toCanvas(pts[i].x, pts[i].y);
+      poseCtx.strokeStyle = `rgba(0, 113, 227, ${0.15 + 0.6 * (i / pts.length)})`;
+      poseCtx.beginPath();
+      poseCtx.moveTo(x0, y0);
+      poseCtx.lineTo(x1, y1);
+      poseCtx.stroke();
+    }
+  }
+
+  const [rx, ry] = toCanvas(poseWorldX, poseWorldY);
+  const yawRad = (imu.yaw || 0) * Math.PI / 180;
+  poseCtx.save();
+  poseCtx.translate(rx, ry);
+  poseCtx.rotate(-yawRad);
+  const s = 16;
+  poseCtx.fillStyle = '#0071e3';
+  poseCtx.fillRect(-s / 2, -s / 2, s, s);
+  poseCtx.fillStyle = '#ff3b30';
+  poseCtx.beginPath();
+  poseCtx.moveTo(s / 2 + 6, 0);
+  poseCtx.lineTo(s / 2 - 4, -6);
+  poseCtx.lineTo(s / 2 - 4, 6);
+  poseCtx.closePath();
+  poseCtx.fill();
+  poseCtx.restore();
+}
+
+function renderPose(imu, enc) {
+  $('yawVal').textContent = fmt(imu.yaw) + ' deg';
+  stepPoseTrail(imu, enc);
+  drawPose(imu);
+}
+function fmt(n) { return (typeof n === 'number') ? n.toFixed(2) : '--'; }
+
 // ---- Person tracking module ----
+const camCanvas = $('camCanvas');
+const camCtx = camCanvas.getContext('2d');
+const CAM_FRAME_W = 320, CAM_FRAME_H = 240; // default HuskyLens frame resolution
+
+function drawCamBox(cam) {
+  const w = camCanvas.width, h = camCanvas.height;
+  camCtx.clearRect(0, 0, w, h);
+  camCtx.fillStyle = '#f2f2f4';
+  camCtx.fillRect(0, 0, w, h);
+  camCtx.strokeStyle = 'rgba(0, 0, 0, .08)';
+  camCtx.strokeRect(0.5, 0.5, w - 1, h - 1);
+  if (!cam.valid) return;
+  const sx = w / CAM_FRAME_W, sy = h / CAM_FRAME_H;
+  const bw = Math.max(cam.w, 10) * sx, bh = Math.max(cam.h, 10) * sy;
+  const bx = cam.x * sx - bw / 2, by = cam.y * sy - bh / 2;
+  camCtx.fillStyle = 'rgba(52, 199, 89, .15)';
+  camCtx.fillRect(bx, by, bw, bh);
+  camCtx.strokeStyle = '#34c759';
+  camCtx.lineWidth = 2;
+  camCtx.strokeRect(bx, by, bw, bh);
+}
+
 function renderCam(cam) {
   $('camStatus').classList.toggle('tracking', !!cam.valid);
   $('camStatusText').textContent = cam.valid ? 'Tracking' : 'Not Tracking';
   $('camX').textContent = cam.valid ? cam.x : '--';
   $('camY').textContent = cam.valid ? cam.y : '--';
+  drawCamBox(cam);
 }
 
 // ---- Rover photo module ----
@@ -235,7 +327,7 @@ $('robotFile').addEventListener('change', async (evt) => {
 // ---- Telemetry dispatch ----
 function applyTelemetry(d) {
   $('uptime').textContent = 'uptime ' + (d.t / 1000).toFixed(1) + ' s';
-  renderIMU(d.imu);
+  renderPose(d.imu, d.enc);
   renderCam(d.cam);
   renderEncoders(d.enc);
 }

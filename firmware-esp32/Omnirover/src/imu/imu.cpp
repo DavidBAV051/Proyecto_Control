@@ -12,9 +12,18 @@ static TwoWire I2C_IMU = TwoWire(0);
 // Re-issue the reports we depend on; needed after init and after any
 // sensor-triggered reset (BNO08x reports are not persisted across resets).
 static void enable_reports() {
-    bno08x.enableReport(SH2_ACCELEROMETER, 10000);       // 100Hz, m/s^2 incl. gravity
-    bno08x.enableReport(SH2_GYROSCOPE_CALIBRATED, 10000); // 100Hz, rad/s
-    bno08x.enableReport(SH2_TEMPERATURE, 1000000);        // 1Hz, deg C
+    bno08x.enableReport(SH2_ACCELEROMETER, 10000);         // 100Hz, m/s^2 incl. gravity
+    bno08x.enableReport(SH2_GYROSCOPE_CALIBRATED, 10000);   // 100Hz, rad/s
+    bno08x.enableReport(SH2_TEMPERATURE, 1000000);          // 1Hz, deg C
+    bno08x.enableReport(SH2_GAME_ROTATION_VECTOR, 10000);   // 100Hz, gyro+accel fused heading (no magnetometer drift ref)
+}
+
+// atan2-based yaw extraction from a unit quaternion (same convention Adafruit's
+// own quaternion_yaw_pitch_roll example uses).
+static float quaternionToYawDeg(float qr, float qi, float qj, float qk) {
+    float sqr = qr * qr, sqi = qi * qi, sqj = qj * qj, sqk = qk * qk;
+    float yaw = atan2f(2.0f * (qi * qj + qk * qr), (sqi - sqj - sqk + sqr));
+    return yaw * RAD_TO_DEG;
 }
 
 bool init_IMU() {
@@ -51,6 +60,13 @@ void update_IMU() {
                 break;
             case SH2_TEMPERATURE:
                 current_data.temp = event.un.temperature.value;
+                break;
+            case SH2_GAME_ROTATION_VECTOR:
+                current_data.yaw = quaternionToYawDeg(
+                    event.un.gameRotationVector.real,
+                    event.un.gameRotationVector.i,
+                    event.un.gameRotationVector.j,
+                    event.un.gameRotationVector.k);
                 break;
         }
     }
