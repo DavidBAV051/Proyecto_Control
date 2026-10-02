@@ -12,9 +12,13 @@ static TwoWire I2C_IMU = TwoWire(0);
 // Re-issue the reports we depend on; needed after init and after any
 // sensor-triggered reset (BNO08x reports are not persisted across resets).
 static void enable_reports() {
-    bno08x.enableReport(SH2_ACCELEROMETER, 10000);       // 100Hz, m/s^2 incl. gravity
-    bno08x.enableReport(SH2_GYROSCOPE_CALIBRATED, 10000); // 100Hz, rad/s
-    bno08x.enableReport(SH2_TEMPERATURE, 1000000);        // 1Hz, deg C
+    bno08x.enableReport(SH2_ACCELEROMETER, 10000);              // 100Hz, m/s^2 incl. gravity
+    bno08x.enableReport(SH2_GYROSCOPE_CALIBRATED, 10000);        // 100Hz, rad/s
+    bno08x.enableReport(SH2_MAGNETIC_FIELD_CALIBRATED, 10000);   // 100Hz, uT
+    bno08x.enableReport(SH2_LINEAR_ACCELERATION, 10000);         // 100Hz, m/s^2, gravity removed
+    bno08x.enableReport(SH2_GRAVITY, 10000);                     // 100Hz, m/s^2
+    bno08x.enableReport(SH2_ROTATION_VECTOR, 10000);             // 100Hz, absolute quaternion (uses magnetometer)
+    bno08x.enableReport(SH2_TEMPERATURE, 1000000);                // 1Hz, deg C
 }
 
 bool init_IMU() {
@@ -49,6 +53,28 @@ void update_IMU() {
                 current_data.gyroY = event.un.gyroscope.y;
                 current_data.gyroZ = event.un.gyroscope.z;
                 break;
+            case SH2_MAGNETIC_FIELD_CALIBRATED:
+                current_data.magX = event.un.magneticField.x;
+                current_data.magY = event.un.magneticField.y;
+                current_data.magZ = event.un.magneticField.z;
+                break;
+            case SH2_LINEAR_ACCELERATION:
+                current_data.linAccelX = event.un.linearAcceleration.x;
+                current_data.linAccelY = event.un.linearAcceleration.y;
+                current_data.linAccelZ = event.un.linearAcceleration.z;
+                break;
+            case SH2_GRAVITY:
+                current_data.gravX = event.un.gravity.x;
+                current_data.gravY = event.un.gravity.y;
+                current_data.gravZ = event.un.gravity.z;
+                break;
+            case SH2_ROTATION_VECTOR:
+                current_data.quatReal        = event.un.rotationVector.real;
+                current_data.quatI           = event.un.rotationVector.i;
+                current_data.quatJ           = event.un.rotationVector.j;
+                current_data.quatK           = event.un.rotationVector.k;
+                current_data.quatAccuracyRad = event.un.rotationVector.accuracy;
+                break;
             case SH2_TEMPERATURE:
                 current_data.temp = event.un.temperature.value;
                 break;
@@ -58,4 +84,17 @@ void update_IMU() {
 
 IMU_Data get_IMU_Data() {
     return current_data;
+}
+
+void print_IMU_Data() {
+    const IMU_Data &d = current_data;
+    Serial.println("---- BNO08x ----");
+    Serial.printf("Accel      (m/s^2): %8.3f %8.3f %8.3f\n", d.accelX, d.accelY, d.accelZ);
+    Serial.printf("Gyro        (rad/s): %8.3f %8.3f %8.3f\n", d.gyroX, d.gyroY, d.gyroZ);
+    Serial.printf("Mag           (uT): %8.3f %8.3f %8.3f\n", d.magX, d.magY, d.magZ);
+    Serial.printf("Lin. Accel (m/s^2): %8.3f %8.3f %8.3f\n", d.linAccelX, d.linAccelY, d.linAccelZ);
+    Serial.printf("Gravity    (m/s^2): %8.3f %8.3f %8.3f\n", d.gravX, d.gravY, d.gravZ);
+    Serial.printf("Quaternion (r,i,j,k): %7.4f %7.4f %7.4f %7.4f (acc %.3f rad)\n",
+                  d.quatReal, d.quatI, d.quatJ, d.quatK, d.quatAccuracyRad);
+    Serial.printf("Temp            (C): %6.2f\n", d.temp);
 }

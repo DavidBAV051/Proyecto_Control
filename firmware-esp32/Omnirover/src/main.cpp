@@ -79,12 +79,15 @@ void setup()
     espNow_init();
 
     // initHuskyLens();
-    // if (init_IMU()) {
-    //     Serial.println("¡IMU online y filtrada a 10Hz!");
-    // } else {
-    //     Serial.println("Error: No se detecto la MPU6050");
-    //     while(1);
-    // }
+
+    // -- IMU bring-up/debug mode: wiring check via Serial, motors left idle --
+    if (init_IMU()) {
+        Serial.println("BNO08x online.");
+    } else {
+        Serial.println("Error: BNO08x not detected (check wiring/address).");
+        while (1) { delay(1000); }
+    }
+
     motors.init();
     motors.stopAll();
     Serial.println("DRV8871 Motor Controller Ready.");
@@ -94,23 +97,11 @@ void setup()
 
 void loop()
 {
-    moveForward();
-    delay(MOVE_DURATION_MS);
-    stopAllMotors();
-    delay(STOP_PAUSE_MS);
-
-    slideRight();
-    delay(MOVE_DURATION_MS);
-    stopAllMotors();
-    delay(STOP_PAUSE_MS);
-
-    moveBackward();
-    delay(MOVE_DURATION_MS);
-    stopAllMotors();
-    delay(STOP_PAUSE_MS);
-
-    slideLeft();
-    delay(MOVE_DURATION_MS);
-    stopAllMotors();
-    delay(STOP_PAUSE_MS);
+    // IMU bring-up/debug mode: dump every BNO08x report to Serial at ~5Hz.
+    update_IMU();
+    static uint32_t lastPrint = 0;
+    if (millis() - lastPrint >= 200) {
+        lastPrint = millis();
+        print_IMU_Data();
+    }
 }

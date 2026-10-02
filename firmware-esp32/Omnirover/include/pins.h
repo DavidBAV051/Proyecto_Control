@@ -45,7 +45,8 @@
 // ---- Shared I2C bus: GY-BNO08X IMU + proximity (ToF) sensor array ----
 // GY-BNO08X wiring for I2C mode (no extra GPIOs needed):
 //   PS1, PS0 -> GND (selects I2C protocol; module default)
-//   CS, RST  -> VCC (unused/inactive in I2C mode, per Adafruit reference wiring)
+//   CS, RST  -> regulated 3V3 rail ONLY, never 5V (direct logic pins on the
+//               BNO08x die, not power inputs - 5V here destroyed our first unit)
 //   ADO      -> GND (I2C address 0x4A; drive HIGH instead for 0x4B if it collides)
 #define I2C_SDA_PIN 21
 #define I2C_SCL_PIN 22
