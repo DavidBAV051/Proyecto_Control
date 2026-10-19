@@ -30,7 +30,8 @@ struct RoverTelemetry {
 void telemetry_init();
 
 // Thread-safe setters: call these from imu.cpp/cam.cpp/motors.cpp once the
-// real BNO/HuskyLens/encoder reads are wired in, to replace the placeholders.
+// real BNO/HuskyLens reads are wired in (encoders are already live, fed by
+// MotorController::updateEncoderTelemetry()), to replace the placeholders.
 void telemetry_setIMU(const IMU_Data &data);
 void telemetry_setCam(const CamData &data);
 void telemetry_setEncoder(uint8_t motorIndex, const EncoderData &data);
@@ -38,9 +39,10 @@ void telemetry_setEncoder(uint8_t motorIndex, const EncoderData &data);
 // Thread-safe snapshot of the current telemetry state.
 RoverTelemetry telemetry_get();
 
-// No sensors are wired in yet: fills telemetry with smoothly moving
+// No IMU/cam sensors are wired in yet: fills telemetry with smoothly moving
 // placeholder values so the dashboard has something real-time to show.
-// TODO: remove once init_IMU()/updateHuskyLens()/encoder ISRs feed telemetry_set*().
+// Encoders are excluded here since they're now fed live, see telemetry_setEncoder().
+// TODO: remove once init_IMU()/updateHuskyLens() feed telemetry_set*().
 void telemetry_simulate();
 
 // Serializes the current snapshot to a compact JSON string for the dashboard.

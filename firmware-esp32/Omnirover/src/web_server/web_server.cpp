@@ -4,6 +4,7 @@
 #include <LittleFS.h>
 #include "net_config.h"
 #include "telemetry.h"
+#include "motors.h"
 #include "web_dashboard_html.h"
 
 static AsyncWebServer server(WEB_SERVER_PORT);
@@ -58,7 +59,8 @@ static void telemetryTask(void *param) {
     (void)param;
     for (;;) {
 #if ROVER_LINK_MODE != LINK_MODE_ESPNOW_BASE
-        telemetry_simulate(); // TODO: drop once real sensors feed telemetry_set*()
+        telemetry_simulate(); // TODO: drop once IMU/cam are wired in
+        motors.updateEncoderTelemetry(); // real encoder reads, not a placeholder
 #endif
         if (ws.count() > 0) {
             ws.textAll(telemetry_toJson());

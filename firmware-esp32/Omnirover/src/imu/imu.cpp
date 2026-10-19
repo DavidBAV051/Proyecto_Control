@@ -27,7 +27,7 @@ static float quaternionToYawDeg(float qr, float qi, float qj, float qk) {
 }
 
 bool init_IMU() {
-    // Shared I2C bus (also used by the proximity sensor array) at 400kHz (Fast Mode)
+    // Shared I2C bus at 400kHz (Fast Mode)
     if (!I2C_IMU.begin(I2C_SDA_PIN, I2C_SCL_PIN, 400000)) {
         return false;
     }

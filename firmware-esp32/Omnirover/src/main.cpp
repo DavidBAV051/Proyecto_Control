@@ -5,8 +5,8 @@
 #include "web_server.h"
 #include "espnow_link.h"
 
-// for setMotorSpeed 0 and 1, negative values move forward, positive values move backward
-// for setMotorSpeed 2 and 3, negative values move backward, positive values move forward
+// for setMotorSpeed 0, 1, and 2, positive values move forward, negative values move backward
+// for setMotorSpeed 3, negative values move forwards, positive values move backwards
 
 // Motor index reference:
 //   0 = back right, 1 = back left, 2 = front right, 3 = front left
@@ -19,34 +19,34 @@ static const uint32_t STOP_PAUSE_MS = 500;
 
 void moveForward(int16_t speed = DEFAULT_DRIVE_SPEED)
 {
-    motors.setMotorSpeed(0, -speed);
-    motors.setMotorSpeed(1, -speed);
-    motors.setMotorSpeed(2,  speed);
-    motors.setMotorSpeed(3,  speed);
+    motors.setMotorSpeed(0, speed);
+    motors.setMotorSpeed(1, speed);
+    motors.setMotorSpeed(2, speed);
+    motors.setMotorSpeed(3, -speed);
 }
 
 void moveBackward(int16_t speed = DEFAULT_DRIVE_SPEED)
 {
-    motors.setMotorSpeed(0,  speed);
-    motors.setMotorSpeed(1,  speed);
+    motors.setMotorSpeed(0, -speed);
+    motors.setMotorSpeed(1, -speed);
     motors.setMotorSpeed(2, -speed);
-    motors.setMotorSpeed(3, -speed);
+    motors.setMotorSpeed(3, speed);
 }
 
 void slideRight(int16_t speed = DEFAULT_SLIDE_SPEED)
 {
-    motors.setMotorSpeed(0, -speed);
-    motors.setMotorSpeed(1,  speed);
+    motors.setMotorSpeed(0, speed);
+    motors.setMotorSpeed(1, -speed);
     motors.setMotorSpeed(2, -speed);
-    motors.setMotorSpeed(3,  speed);
+    motors.setMotorSpeed(3, -speed);
 }
 
 void slideLeft(int16_t speed = DEFAULT_SLIDE_SPEED)
 {
-    motors.setMotorSpeed(0,  speed);
-    motors.setMotorSpeed(1, -speed);
-    motors.setMotorSpeed(2,  speed);
-    motors.setMotorSpeed(3, -speed);
+    motors.setMotorSpeed(0, -speed);
+    motors.setMotorSpeed(1, speed);
+    motors.setMotorSpeed(2, speed);
+    motors.setMotorSpeed(3, speed);
 }
 
 void stopAllMotors()
@@ -73,8 +73,8 @@ void setup()
     Serial.begin(115200);
 
     // Real-time dashboard (WiFi AP + web server, or ESP-NOW bridge depending
-    // on ROVER_LINK_MODE in include/net_config.h). Telemetry is placeholder
-    // data until the BNO/HuskyLens/encoders are wired in.
+    // on ROVER_LINK_MODE in include/net_config.h). IMU/cam telemetry is still
+    // placeholder data until the BNO/HuskyLens are wired in; encoders are live.
     webServer_init();
     espNow_init();
 
@@ -95,22 +95,23 @@ void setup()
 void loop()
 {
     moveForward();
-    delay(MOVE_DURATION_MS);
-    stopAllMotors();
-    delay(STOP_PAUSE_MS);
+    delay(10); // yield so the core-1 idle task can run; avoids task-watchdog resets
+    // delay(MOVE_DURATION_MS);
+    // stopAllMotors();
+    // delay(STOP_PAUSE_MS);
 
-    slideRight();
-    delay(MOVE_DURATION_MS);
-    stopAllMotors();
-    delay(STOP_PAUSE_MS);
+    // slideRight();
+    // delay(MOVE_DURATION_MS);
+    // stopAllMotors();
+    // delay(STOP_PAUSE_MS);
 
-    moveBackward();
-    delay(MOVE_DURATION_MS);
-    stopAllMotors();
-    delay(STOP_PAUSE_MS);
+    // moveBackward();
+    // delay(MOVE_DURATION_MS);
+    // stopAllMotors();
+    // delay(STOP_PAUSE_MS);
 
-    slideLeft();
-    delay(MOVE_DURATION_MS);
-    stopAllMotors();
-    delay(STOP_PAUSE_MS);
+    // slideLeft();
+    // delay(MOVE_DURATION_MS);
+    // stopAllMotors();
+    // delay(STOP_PAUSE_MS);
 }

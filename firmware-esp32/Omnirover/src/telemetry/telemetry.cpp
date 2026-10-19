@@ -60,13 +60,6 @@ void telemetry_simulate() {
     cam.height = 40;
     telemetry_setCam(cam);
 
-    for (uint8_t m = 0; m < TELEMETRY_NUM_MOTORS; m++) {
-        EncoderData enc;
-        enc.position    = (long)(1000 * sinf(phase + m));
-        enc.velocityRpm = 60.0f * sinf(phase * 2.0f + m);
-        telemetry_setEncoder(m, enc);
-    }
-
     xSemaphoreTake(g_mutex, portMAX_DELAY);
     g_telemetry.uptimeMs = t;
     xSemaphoreGive(g_mutex);
