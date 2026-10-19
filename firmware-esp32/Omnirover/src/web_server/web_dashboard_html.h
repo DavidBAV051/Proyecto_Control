@@ -100,14 +100,13 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
 
   /* Encoders card */
   .enc-row {
-    display: grid; grid-template-columns: 44px 1fr 70px 90px;
+    display: grid; grid-template-columns: 44px 1fr 70px;
     align-items: center; gap: 12px; margin-bottom: 10px;
   }
   .enc-row:last-child { margin-bottom: 0; }
   .enc-row span:first-child { font-weight: 600; font-size: .85rem; }
   .bar { height: 8px; background: #eef0f2; border-radius: 6px; overflow: hidden; }
   .bar > i { display: block; height: 100%; background: var(--accent); width: 50%; transition: width .2s; }
-  .enc-pos { color: var(--text-secondary); font-size: .8rem; text-align: right; font-variant-numeric: tabular-nums; }
 
   /* Rover photo card */
   .robot-card { display: flex; flex-direction: column; }
@@ -181,13 +180,12 @@ const $ = (id) => document.getElementById(id);
 for (let i = 0; i < 4; i++) {
   const row = document.createElement('div');
   row.className = 'enc-row';
-  row.innerHTML = `<span>M${i}</span><div class="bar"><i id="encBar${i}"></i></div><span class="val" id="encVal${i}">--</span><span class="enc-pos" id="encPos${i}">--</span>`;
+  row.innerHTML = `<span>M${i}</span><div class="bar"><i id="encBar${i}"></i></div><span class="val" id="encVal${i}">--</span>`;
   $('encoders').appendChild(row);
 }
 function renderEncoders(enc) {
   enc.forEach((e, i) => {
     $('encVal' + i).textContent = e.vel.toFixed(0) + ' rpm';
-    $('encPos' + i).textContent = e.pos + ' pulses';
     const pct = Math.max(0, Math.min(100, 50 + e.vel / 2));
     $('encBar' + i).style.width = pct + '%';
   });
@@ -210,7 +208,7 @@ function stepPoseTrail(imu, enc) {
   poseLastT = now;
   const avgVel = enc.reduce((sum, e) => sum + e.vel, 0) / (enc.length || 1);
   const speed = avgVel * 0.02;
-  const yawRad = (imu.yaw || 0) * Math.PI / 180;
+  const yawRad = 0; // rotation disabled until IMU yaw is live; heading pinned to 0 deg
   poseWorldX += speed * Math.cos(yawRad) * dt;
   poseWorldY += speed * Math.sin(yawRad) * dt;
   poseTrail.push({ x: poseWorldX, y: poseWorldY });
@@ -238,8 +236,8 @@ function drawPose(imu) {
     for (let i = 1; i < pts.length; i++) {
       const [x0, y0] = toCanvas(pts[i - 1].x, pts[i - 1].y);
       const [x1, y1] = toCanvas(pts[i].x, pts[i].y);
-      // Trail uses green so it reads distinctly from the blue rover body icon.
-      poseCtx.strokeStyle = `rgba(52, 199, 89, ${0.15 + 0.6 * (i / pts.length)})`;
+      // Trail uses orange so it reads distinctly from the blue body / red heading arrow.
+      poseCtx.strokeStyle = `rgba(255, 149, 0, ${0.35 + 0.6 * (i / pts.length)})`;
       poseCtx.beginPath();
       poseCtx.moveTo(x0, y0);
       poseCtx.lineTo(x1, y1);
@@ -248,7 +246,7 @@ function drawPose(imu) {
   }
 
   const [rx, ry] = toCanvas(poseWorldX, poseWorldY);
-  const yawRad = (imu.yaw || 0) * Math.PI / 180;
+  const yawRad = 0; // rotation disabled until IMU yaw is live; heading pinned to 0 deg
   poseCtx.save();
   poseCtx.translate(rx, ry);
   poseCtx.rotate(-yawRad);
@@ -266,7 +264,7 @@ function drawPose(imu) {
 }
 
 function renderPose(imu, enc) {
-  $('yawVal').textContent = fmt(imu.yaw) + ' deg';
+  $('yawVal').textContent = '0.00 deg';
   stepPoseTrail(imu, enc);
   drawPose(imu);
 }

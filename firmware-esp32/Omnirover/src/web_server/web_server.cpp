@@ -88,7 +88,10 @@ void webServer_init() {
     server.addHandler(&ws);
 
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(200, "text/html", DASHBOARD_HTML);
+        AsyncWebServerResponse *response = request->beginResponse(200, "text/html", DASHBOARD_HTML);
+        // Prevent the browser from caching a stale dashboard across reflashes.
+        response->addHeader("Cache-Control", "no-store");
+        request->send(response);
     });
 
     server.on("/robot.jpg", HTTP_GET, [](AsyncWebServerRequest *request) {

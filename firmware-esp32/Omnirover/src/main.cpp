@@ -95,23 +95,22 @@ void setup()
 void loop()
 {
     moveForward();
-    delay(10); // yield so the core-1 idle task can run; avoids task-watchdog resets
-    // delay(MOVE_DURATION_MS);
-    // stopAllMotors();
-    // delay(STOP_PAUSE_MS);
+    delay(MOVE_DURATION_MS);
+    stopAllMotors();
+    delay(STOP_PAUSE_MS);
 
-    // slideRight();
-    // delay(MOVE_DURATION_MS);
-    // stopAllMotors();
-    // delay(STOP_PAUSE_MS);
+    slideRight();
+    delay(MOVE_DURATION_MS);
+    stopAllMotors();
+    delay(STOP_PAUSE_MS);
 
-    // moveBackward();
-    // delay(MOVE_DURATION_MS);
-    // stopAllMotors();
-    // delay(STOP_PAUSE_MS);
+    moveBackward();
+    delay(MOVE_DURATION_MS);
+    stopAllMotors();
+    delay(STOP_PAUSE_MS);
 
-    // slideLeft();
-    // delay(MOVE_DURATION_MS);
-    // stopAllMotors();
-    // delay(STOP_PAUSE_MS);
+    slideLeft();
+    delay(MOVE_DURATION_MS);
+    stopAllMotors();
+    delay(STOP_PAUSE_MS);
 }

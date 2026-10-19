@@ -14,14 +14,15 @@
 static const uint16_t MOTOR_RATED_RPM[NUM_MOTORS] = {150, 140, 150, 150};
 static const uint16_t FLEET_RPM_CAP = 140;
 
-// Encoder pulse counting: PLACEHOLDER base PPR, tune once the true output-shaft
-// counts-per-revolution is measured per motor. Quadrature decoding on both
-// channels (A+B, every edge) multiplies this base PPR by ENCODER_QUAD_MULT.
-// Motor index 1 is the swapped 140 RPM unit with a different encoder: at the
-// same commanded duty its raw pulse rate reads ~1.9x the other three, so it
-// gets its own (still placeholder) PPR until measured directly.
-static const float   ENCODER_PPR[NUM_MOTORS] = {11.0f, 20.5f, 11.0f, 11.0f};
-static const uint8_t ENCODER_QUAD_MULT = 4;
+// Measured quadrature pulse counts for one full output-shaft revolution,
+// per motor (M1 is the swapped 140 RPM unit, hence the different count).
+static const float ENCODER_COUNTS_PER_REV[NUM_MOTORS] = {1047.0f, 2046.0f, 1028.0f, 1000.0f};
+
+// Motors 0 & 2 have their encoder A/B leads wired with the opposite phase
+// relationship vs motors 1 & 3, so raw quadrature counts come out negated
+// relative to commanded forward direction. Flips sign so +RPM always means
+// "spinning the way moveForward() drives it", matching motors 1/3.
+static const int8_t ENCODER_DIR[NUM_MOTORS] = {-1, 1, -1, 1};
 
 class MotorController {
 public:

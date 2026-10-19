@@ -87,14 +87,16 @@ void MotorController::updateEncoderTelemetry() {
     lastEncoderUpdateMs = now;
 
     for (uint8_t m = 0; m < NUM_MOTORS; m++) {
-        long count = encoderCount[m]; // 32-bit aligned read, atomic on this core
-        long delta = count - lastEncoderCount[m];
-        lastEncoderCount[m] = count;
+        long rawCount = encoderCount[m]; // 32-bit aligned read, atomic on this core
+        long rawDelta = rawCount - lastEncoderCount[m];
+        lastEncoderCount[m] = rawCount;
 
-        float countsPerRev = ENCODER_PPR[m] * ENCODER_QUAD_MULT;
+        long count = rawCount * ENCODER_DIR[m];
+        long delta = rawDelta * ENCODER_DIR[m];
+
         EncoderData enc;
         enc.position    = count;
-        enc.velocityRpm = (delta / countsPerRev) * (60000.0f / elapsedMs);
+        enc.velocityRpm = (delta / ENCODER_COUNTS_PER_REV[m]) * (60000.0f / elapsedMs);
         telemetry_setEncoder(m, enc);
         // Raw A/B levels help tell a disconnected/dead encoder (pins never change)
         // apart from a decode bug (pins toggle but count doesn't move).
