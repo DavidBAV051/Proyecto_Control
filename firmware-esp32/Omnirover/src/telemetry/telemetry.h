@@ -39,11 +39,11 @@ void telemetry_setEncoder(uint8_t motorIndex, const EncoderData &data);
 // Thread-safe snapshot of the current telemetry state.
 RoverTelemetry telemetry_get();
 
-// No IMU/cam sensors are wired in yet: fills telemetry with smoothly moving
-// placeholder values so the dashboard has something real-time to show.
-// Encoders are excluded here since they're now fed live, see telemetry_setEncoder().
-// TODO: remove once init_IMU()/updateHuskyLens() feed telemetry_set*().
-void telemetry_simulate();
+// No cam sensor is wired in yet: fills telemetry with a smoothly moving placeholder
+// detection so the dashboard has something real-time to show. IMU and encoders are
+// already fed live, see telemetry_setIMU()/telemetry_setEncoder().
+// TODO: remove once updateHuskyLens() feeds telemetry_setCam().
+void telemetry_simulateCam();
 
 // Serializes the current snapshot to a compact JSON string for the dashboard.
 String telemetry_toJson();

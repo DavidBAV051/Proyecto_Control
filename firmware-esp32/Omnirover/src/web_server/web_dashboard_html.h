@@ -197,22 +197,32 @@ const poseCtx = poseCanvas.getContext('2d');
 let poseTrail = [];
 let poseWorldX = 0, poseWorldY = 0;
 let poseLastT = null;
+let lateralVel = 0; // leaky-integrated sideways (body-frame) velocity, from accelY
 
-// Dead-reckons an approximate path from mean wheel speed (enc[].vel, rpm) and
-// IMU yaw. Units are arbitrary (not real-world distance) since wheel radius
-// isn't modeled here; good enough to visualize direction/shape of movement.
+// Dead-reckons an approximate path from mean wheel speed (enc[].vel, rpm) for the
+// forward component, IMU yaw for heading, and accelY (body-frame sideways accel)
+// for the lateral/strafe component the drive encoders can't see on their own
+// (e.g. during a pure slideLeft/slideRight). Units are arbitrary (not real-world
+// distance) since wheel radius isn't modeled here; good enough to visualize
+// direction/shape of movement.
 function stepPoseTrail(imu, enc) {
   const now = performance.now();
   if (poseLastT === null) { poseLastT = now; return; }
   const dt = Math.min(0.5, (now - poseLastT) / 1000);
   poseLastT = now;
   const avgVel = enc.reduce((sum, e) => sum + e.vel, 0) / (enc.length || 1);
-  const speed = avgVel * 0.02;
+  const speedForward = avgVel * 0.02;
+  // Plain double integration of accelY drifts too fast to be usable, so leak the
+  // velocity estimate back toward zero each step instead of integrating forever.
+  lateralVel = (lateralVel + (imu.ay || 0) * dt) * 0.9;
+  const speedLateral = lateralVel;
   // Heading convention: 0 deg = forward (screen up), positive = clockwise/right turn
   // (compass-style bearing). Same convention the heading-hold PID should target 0 for.
   const yawRad = (imu.yaw || 0) * Math.PI / 180;
-  poseWorldX += speed * Math.sin(yawRad) * dt;
-  poseWorldY += speed * Math.cos(yawRad) * dt;
+  const fx = Math.sin(yawRad), fy = Math.cos(yawRad);   // forward unit vector (world)
+  const rx = Math.cos(yawRad), ry = -Math.sin(yawRad);  // rover's right unit vector (world)
+  poseWorldX += (speedForward * fx + speedLateral * rx) * dt;
+  poseWorldY += (speedForward * fy + speedLateral * ry) * dt;
   poseTrail.push({ x: poseWorldX, y: poseWorldY });
   if (poseTrail.length > 400) poseTrail.shift();
 }

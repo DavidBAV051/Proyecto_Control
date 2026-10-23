@@ -1,3 +1,4 @@
+#pragma once
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_BNO08x.h>
@@ -18,3 +19,4 @@ struct IMU_Data {
 bool init_IMU();
 void update_IMU();
 IMU_Data get_IMU_Data();
+void print_IMU_Data();

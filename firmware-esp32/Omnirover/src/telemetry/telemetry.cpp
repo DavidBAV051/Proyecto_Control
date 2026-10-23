@@ -36,20 +36,9 @@ RoverTelemetry telemetry_get() {
     return snapshot;
 }
 
-void telemetry_simulate() {
+void telemetry_simulateCam() {
     uint32_t t = millis();
     float phase = t / 1000.0f;
-
-    IMU_Data imu;
-    imu.accelX = sinf(phase) * 0.5f;
-    imu.accelY = cosf(phase) * 0.5f;
-    imu.accelZ = 9.81f + sinf(phase * 0.3f) * 0.1f;
-    imu.gyroX  = sinf(phase * 1.5f) * 10.0f;
-    imu.gyroY  = cosf(phase * 1.5f) * 10.0f;
-    imu.gyroZ  = sinf(phase * 0.7f) * 5.0f;
-    imu.temp   = 25.0f + sinf(phase * 0.1f) * 2.0f;
-    imu.yaw    = 70.0f * sinf(phase * 0.35f); // demo: rover slowly turning left/right
-    telemetry_setIMU(imu);
 
     CamData cam;
     cam.valid  = true;

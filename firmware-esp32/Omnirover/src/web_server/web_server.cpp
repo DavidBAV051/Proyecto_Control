@@ -59,7 +59,7 @@ static void telemetryTask(void *param) {
     (void)param;
     for (;;) {
 #if ROVER_LINK_MODE != LINK_MODE_ESPNOW_BASE
-        telemetry_simulate(); // TODO: drop once IMU/cam are wired in
+        telemetry_simulateCam(); // TODO: drop once HuskyLens is wired in
         motors.updateEncoderTelemetry(); // real encoder reads, not a placeholder
 #endif
         if (ws.count() > 0) {
