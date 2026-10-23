@@ -2,9 +2,9 @@
 #include "pins.h"
 
 // GY-BNO08X breakout: PS1/PS0 are hardwired low on the module (I2C mode is
-// the default and only wiring supported by our pin budget). CS is tied to
-// VCC and RST to VCC (no MCU-controlled reset pin, per Adafruit's own I2C
-// reference wiring), so only SDA/SCL are needed -> reuses the shared bus.
+// the default and only wiring supported by our pin budget). This breakout has
+// no CS pin. RST must be tied to 3.3V (active-low; GND would hold the chip in
+// permanent reset), so only SDA/SCL are needed -> reuses the shared bus.
 static Adafruit_BNO08x bno08x(-1);
 static IMU_Data current_data;
 static TwoWire I2C_IMU = TwoWire(0);

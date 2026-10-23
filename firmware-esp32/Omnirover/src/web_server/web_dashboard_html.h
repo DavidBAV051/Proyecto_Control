@@ -208,9 +208,11 @@ function stepPoseTrail(imu, enc) {
   poseLastT = now;
   const avgVel = enc.reduce((sum, e) => sum + e.vel, 0) / (enc.length || 1);
   const speed = avgVel * 0.02;
-  const yawRad = 0; // rotation disabled until IMU yaw is live; heading pinned to 0 deg
-  poseWorldX += speed * Math.cos(yawRad) * dt;
-  poseWorldY += speed * Math.sin(yawRad) * dt;
+  // Heading convention: 0 deg = forward (screen up), positive = clockwise/right turn
+  // (compass-style bearing). Same convention the heading-hold PID should target 0 for.
+  const yawRad = (imu.yaw || 0) * Math.PI / 180;
+  poseWorldX += speed * Math.sin(yawRad) * dt;
+  poseWorldY += speed * Math.cos(yawRad) * dt;
   poseTrail.push({ x: poseWorldX, y: poseWorldY });
   if (poseTrail.length > 400) poseTrail.shift();
 }
@@ -246,25 +248,27 @@ function drawPose(imu) {
   }
 
   const [rx, ry] = toCanvas(poseWorldX, poseWorldY);
-  const yawRad = 0; // rotation disabled until IMU yaw is live; heading pinned to 0 deg
+  const yawRad = (imu.yaw || 0) * Math.PI / 180;
   poseCtx.save();
   poseCtx.translate(rx, ry);
-  poseCtx.rotate(-yawRad);
+  // Canvas rotate() is clockwise for +angle, matching the compass-style yaw convention above,
+  // so the nose (drawn pointing up = forward at yaw 0) turns right for positive yaw.
+  poseCtx.rotate(yawRad);
   const s = 16;
   poseCtx.fillStyle = '#0071e3';
   poseCtx.fillRect(-s / 2, -s / 2, s, s);
   poseCtx.fillStyle = '#ff3b30';
   poseCtx.beginPath();
-  poseCtx.moveTo(s / 2 + 6, 0);
-  poseCtx.lineTo(s / 2 - 4, -6);
-  poseCtx.lineTo(s / 2 - 4, 6);
+  poseCtx.moveTo(0, -(s / 2 + 6));
+  poseCtx.lineTo(-6, s / 2 - 4);
+  poseCtx.lineTo(6, s / 2 - 4);
   poseCtx.closePath();
   poseCtx.fill();
   poseCtx.restore();
 }
 
 function renderPose(imu, enc) {
-  $('yawVal').textContent = '0.00 deg';
+  $('yawVal').textContent = fmt(imu.yaw) + ' deg';
   stepPoseTrail(imu, enc);
   drawPose(imu);
 }

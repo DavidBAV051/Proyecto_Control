@@ -48,9 +48,11 @@
 #define HUSKYLENS_TX2_PIN 17
 
 // ---- Shared I2C bus: GY-BNO08X IMU ----
-// GY-BNO08X wiring for I2C mode (no extra GPIOs needed):
+// This breakout has no CS pin (not exposed). Wiring for I2C mode (no extra GPIOs needed):
 //   PS1, PS0 -> GND (selects I2C protocol; module default)
-//   CS, RST  -> regulated 3V3 rail only, NEVER board 5V (direct logic pins on the die)
+//   RST      -> regulated 3V3 rail ONLY, NEVER GND and NEVER board 5V.
+//               RST is active-low: tying it to GND holds the chip in permanent reset
+//               (it will never ACK on I2C). Tie it to 3V3 so it runs normally.
 //   ADO      -> GND (I2C address 0x4A; drive HIGH instead for 0x4B if it collides)
 #define I2C_SDA_PIN 21
 #define I2C_SCL_PIN 22

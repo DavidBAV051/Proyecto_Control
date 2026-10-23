@@ -96,21 +96,21 @@ void loop()
 {
     moveForward();
     delay(MOVE_DURATION_MS);
-    stopAllMotors();
-    delay(STOP_PAUSE_MS);
+    // stopAllMotors();
+    // delay(STOP_PAUSE_MS);
 
-    slideRight();
-    delay(MOVE_DURATION_MS);
-    stopAllMotors();
-    delay(STOP_PAUSE_MS);
+    // slideRight();
+    // delay(MOVE_DURATION_MS);
+    // stopAllMotors();
+    // delay(STOP_PAUSE_MS);
 
-    moveBackward();
-    delay(MOVE_DURATION_MS);
-    stopAllMotors();
-    delay(STOP_PAUSE_MS);
+    // moveBackward();
+    // delay(MOVE_DURATION_MS);
+    // stopAllMotors();
+    // delay(STOP_PAUSE_MS);
 
-    slideLeft();
-    delay(MOVE_DURATION_MS);
-    stopAllMotors();
-    delay(STOP_PAUSE_MS);
+    // slideLeft();
+    // delay(MOVE_DURATION_MS);
+    // stopAllMotors();
+    // delay(STOP_PAUSE_MS);
 }
