@@ -54,8 +54,8 @@ static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
     }
 }
 
-// Runs independently of loop() so the dashboard keeps updating in real time
-// even while main.cpp is busy running blocking motor demo sequences.
+// Runs independently of loop() so the dashboard stays live during blocking
+// motor sequences; see README.md.
 static void telemetryTask(void *param) {
     (void)param;
     for (;;) {
@@ -109,9 +109,7 @@ void webServer_init() {
         [](AsyncWebServerRequest *request) { request->send(200, "text/plain", "ok"); },
         handleRobotImageUpload);
 
-    // Dashboard Start/Stop buttons + trajectory selector, e.g. /control?cmd=start
-    // or /control?trajectory=circle. GET (not strictly RESTful) keeps the client
-    // side to a plain fetch() with no JSON body parsing needed on either end.
+    // Dashboard Start/Stop + trajectory selector; see README.md for the routes table.
     server.on("/control", HTTP_GET, [](AsyncWebServerRequest *request) {
         if (request->hasParam("cmd")) {
             String cmd = request->getParam("cmd")->value();

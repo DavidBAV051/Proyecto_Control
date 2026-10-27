@@ -2,8 +2,8 @@
 #include <Arduino.h>
 #include "imu.h"
 
-// Latest HuskyLens detection (mirrors HUSKYLENSResult, decoupled so telemetry.h
-// doesn't need to pull in the HuskyLens library).
+// Latest HuskyLens detection; decoupled from HUSKYLENSResult so telemetry.h
+// doesn't need the HuskyLens library. See README.md.
 struct CamData {
     bool    valid  = false;
     int16_t id     = 0;
@@ -18,6 +18,12 @@ struct EncoderData {
     float velocityRpm = 0;
 };
 
+// Dead-reckoned world-frame position in meters; see src/odometry/README.md.
+struct PoseData {
+    float x = 0;
+    float y = 0;
+};
+
 #define TELEMETRY_NUM_MOTORS 4
 
 struct RoverTelemetry {
@@ -25,24 +31,21 @@ struct RoverTelemetry {
     IMU_Data     imu                                = {};
     CamData      cam                                = {};
     EncoderData  encoders[TELEMETRY_NUM_MOTORS]     = {};
+    PoseData     pose                               = {};
 };
 
 void telemetry_init();
 
-// Thread-safe setters: call these from imu.cpp/cam.cpp/motors.cpp once the
-// real BNO/HuskyLens reads are wired in (encoders are already live, fed by
-// MotorController::updateEncoderTelemetry()), to replace the placeholders.
+// Thread-safe setters; see README.md for who calls each one.
 void telemetry_setIMU(const IMU_Data &data);
 void telemetry_setCam(const CamData &data);
 void telemetry_setEncoder(uint8_t motorIndex, const EncoderData &data);
+void telemetry_setPose(float x, float y);
 
 // Thread-safe snapshot of the current telemetry state.
 RoverTelemetry telemetry_get();
 
-// No cam sensor is wired in yet: fills telemetry with a smoothly moving placeholder
-// detection so the dashboard has something real-time to show. IMU and encoders are
-// already fed live, see telemetry_setIMU()/telemetry_setEncoder().
-// TODO: remove once updateHuskyLens() feeds telemetry_setCam().
+// Placeholder cam detection until src/cam/ is wired in; see README.md.
 void telemetry_simulateCam();
 
 // Serializes the current snapshot to a compact JSON string for the dashboard.

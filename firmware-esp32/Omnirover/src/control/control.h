@@ -1,10 +1,8 @@
 #pragma once
 #include <Arduino.h>
 
-// Rover run/stop state + selected trajectory, set from the dashboard's Start/Stop
-// buttons and trajectory selector (web_server.cpp's /control endpoint) and read
-// from main.cpp's loop(). Thread-safe: the web server and main loop run as
-// separate FreeRTOS tasks.
+// Rover run/stop state + selected trajectory, shared between the web server
+// task and main.cpp's loop(). See README.md.
 
 enum RoverTrajectory {
     TRAJ_SQUARE = 0,

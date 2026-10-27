@@ -29,6 +29,13 @@ void telemetry_setEncoder(uint8_t motorIndex, const EncoderData &data) {
     xSemaphoreGive(g_mutex);
 }
 
+void telemetry_setPose(float x, float y) {
+    xSemaphoreTake(g_mutex, portMAX_DELAY);
+    g_telemetry.pose.x = x;
+    g_telemetry.pose.y = y;
+    xSemaphoreGive(g_mutex);
+}
+
 RoverTelemetry telemetry_get() {
     xSemaphoreTake(g_mutex, portMAX_DELAY);
     RoverTelemetry snapshot = g_telemetry;
@@ -84,6 +91,10 @@ String telemetry_toJson() {
         e["pos"] = snap.encoders[m].position;
         e["vel"] = snap.encoders[m].velocityRpm;
     }
+
+    JsonObject pose = doc["pose"].to<JsonObject>();
+    pose["x"] = snap.pose.x;
+    pose["y"] = snap.pose.y;
 
     String out;
     serializeJson(doc, out);

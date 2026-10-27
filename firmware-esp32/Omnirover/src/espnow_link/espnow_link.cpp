@@ -6,7 +6,7 @@
 #include <esp_now.h>
 #include "telemetry.h"
 
-// Flat, fixed-size mirror of RoverTelemetry (ESP-NOW payloads are capped at 250 bytes).
+// Flat, fixed-size mirror of RoverTelemetry (ESP-NOW payload cap is 250 bytes).
 struct EspNowPacket {
     uint32_t    uptimeMs;
     IMU_Data    imu;
@@ -15,7 +15,7 @@ struct EspNowPacket {
 };
 
 #if ROVER_LINK_MODE == LINK_MODE_ESPNOW_BASE
-// arduino-esp32 core 3.x (IDF5) passes esp_now_recv_info_t*; core 2.x passes a raw MAC pointer.
+// Core 3.x (IDF5) vs 2.x have different recv-callback signatures.
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
 static void onDataRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
     (void)info;
@@ -49,7 +49,7 @@ static void espNowSendTask(void *param) {
 #endif
 
 void espNow_init() {
-    WiFi.mode(WIFI_STA); // ESP-NOW needs the WiFi driver up even without an AP/router connection
+    WiFi.mode(WIFI_STA); // required by ESP-NOW even without an AP/router
 
     if (esp_now_init() != ESP_OK) {
         Serial.println("ESP-NOW init failed");
@@ -75,6 +75,6 @@ void espNow_init() {
 
 #else
 void espNow_init() {
-    // LINK_MODE_LOCAL: telemetry is produced and served on this same board, nothing to do.
+    // LINK_MODE_LOCAL: nothing to do, sensors+dashboard are on this same board.
 }
 #endif

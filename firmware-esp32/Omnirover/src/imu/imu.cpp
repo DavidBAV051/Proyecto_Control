@@ -1,32 +1,24 @@
 #include "imu.h"
 #include "pins.h"
 
-// GY-BNO08X breakout: PS1/PS0 are hardwired low on the module (I2C mode is
-// the default and only wiring supported by our pin budget). This breakout has
-// no CS pin. RST must be tied to 3.3V (active-low; GND would hold the chip in
-// permanent reset), so only SDA/SCL are needed -> reuses the shared bus.
+// GY-BNO08X breakout, I2C mode, no CS pin; see README.md and pins.h for wiring.
 static Adafruit_BNO08x bno08x(-1);
 static IMU_Data current_data;
 static TwoWire I2C_IMU = TwoWire(0);
 
-// SH2_ACCELEROMETER is calibrated (bias/scale corrected) but not low-pass filtered,
-// so raw samples are still jittery with vibration noise; smooth with an EMA filter.
-// Lower alpha = smoother but more lag.
+// Raw accel is jittery with vibration; EMA-smoothed (lower alpha = smoother, more lag).
 static const float ACCEL_EMA_ALPHA = 0.2f;
 static bool accelFilterInit = false;
 
-// Re-issue the reports we depend on; needed after init and after any
-// sensor-triggered reset (BNO08x reports are not persisted across resets).
+// Re-issue the reports we depend on; BNO08x doesn't persist them across resets.
 static void enable_reports() {
     bno08x.enableReport(SH2_ACCELEROMETER, 10000);         // 100Hz, m/s^2 incl. gravity
     bno08x.enableReport(SH2_GYROSCOPE_CALIBRATED, 10000);   // 100Hz, rad/s
-    bno08x.enableReport(SH2_GAME_ROTATION_VECTOR, 10000);   // 100Hz, gyro+accel fused heading (no magnetometer drift ref)
-    // SH2_TEMPERATURE dropped: this unit's SH-2 firmware never emits it (enableReport
-    // succeeds but no event ever arrives), so current_data.temp stays telemetry's simulated value.
+    bno08x.enableReport(SH2_GAME_ROTATION_VECTOR, 10000);   // 100Hz, fused heading, no magnetometer
+    // SH2_TEMPERATURE dropped: this unit's firmware never emits it.
 }
 
-// atan2-based yaw extraction from a unit quaternion (same convention Adafruit's
-// own quaternion_yaw_pitch_roll example uses).
+// atan2-based yaw extraction from a unit quaternion.
 static float quaternionToYawDeg(float qr, float qi, float qj, float qk) {
     float sqr = qr * qr, sqi = qi * qi, sqj = qj * qj, sqk = qk * qk;
     float yaw = atan2f(2.0f * (qi * qj + qk * qr), (sqi - sqj - sqk + sqr));
@@ -40,10 +32,8 @@ static float wrapYawDeg(float deg) {
     return deg;
 }
 
-// SH2_GAME_ROTATION_VECTOR has no absolute reference (no magnetometer), so it zeroes
-// at whatever orientation the chip was in when it booted/reset. We want yaw=0 to mean
-// "current heading at our own boot", so capture the first reading as an offset and
-// report everything relative to it instead of the chip's own arbitrary reference.
+// Game rotation vector has no absolute reference; zero it to our own boot heading
+// (see README.md). Capture the first reading as an offset and report relative to it.
 static bool yawZeroed = false;
 static float yawOffsetDeg = 0.0f;
 

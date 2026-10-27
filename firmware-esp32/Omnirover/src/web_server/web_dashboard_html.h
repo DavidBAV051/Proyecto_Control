@@ -169,6 +169,7 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
     <h2>Rover Orientation &amp; Path</h2>
     <canvas id="poseCanvas" width="260" height="220"></canvas>
     <div class="pose-readout"><span>Yaw</span><span class="val" id="yawVal">--</span></div>
+    <div class="pose-readout"><span>X / Y</span><span class="val" id="posVal">--</span></div>
   </div>
 
   <div class="card">
@@ -219,57 +220,17 @@ function renderEncoders(enc) {
 }
 
 // ---- Rover pose module (orientation + dead-reckoned path) ----
+// Position (meters, world frame) now comes straight from firmware odometry
+// (src/odometry/odometry.cpp: mecanum wheel kinematics + IMU yaw), replacing the
+// old client-side sign-classification/accelerometer dead-reckoning attempts.
 const poseCanvas = $('poseCanvas');
 const poseCtx = poseCanvas.getContext('2d');
 let poseTrail = [];
 let poseWorldX = 0, poseWorldY = 0;
-let poseLastT = null;
 
-// Motor index reference (matches src/main.cpp): 0 = back right, 1 = back left,
-// 2 = front right, 3 = front left.
-// BNO accel was too noisy/bouncy to represent strafe reliably, so forward/lateral
-// motion is now classified directly from the known commanded-direction sign table
-// (moveForward/moveBackward/slideRight/slideLeft in main.cpp) instead of accelerometer
-// data. The IMU is only used for yaw/heading now.
-const ENC_DEADBAND_RPM = 5; // ignore vel below this as noise/creep, treat as stopped
-function classifyMovement(enc) {
-  const v = [0, 1, 2, 3].map(i => (enc[i] && enc[i].vel) || 0);
-  const s = v.map(x => (Math.abs(x) > ENC_DEADBAND_RPM ? Math.sign(x) : 0));
-  // v3 is redundant for forward/backward (same sign as v0-v2 once ENCODER_DIR
-  // normalizes it in motors.cpp), so only v0-v2 are checked here.
-  // Circle-tracing also drives only one side at a time (skid-steer arc): right side
-  // (M0/M2) on with left side (M1/M3) stopped, or vice versa, counts the same way.
-  const rightOnly = s[0] !== 0 && s[0] === s[2] && s[1] === 0 && s[3] === 0;
-  const leftOnly = s[1] !== 0 && s[1] === s[3] && s[0] === 0 && s[2] === 0;
-  if ((s[0] > 0 && s[1] > 0 && s[2] > 0) || (rightOnly && s[0] > 0) || (leftOnly && s[1] > 0)) return 'forward';
-  if ((s[0] < 0 && s[1] < 0 && s[2] < 0) || (rightOnly && s[0] < 0) || (leftOnly && s[1] < 0)) return 'backward';
-  if (s[0] > 0 && s[1] < 0 && s[2] < 0) return 'slideRight';
-  if (s[0] < 0 && s[1] > 0 && s[2] > 0) return 'slideLeft';
-  return 'stopped';
-}
-
-// Dead-reckons an approximate path from encoder-derived forward/lateral speed and
-// IMU yaw for heading. Units are arbitrary (not real-world distance) since wheel
-// radius isn't modeled; good enough to visualize direction/shape of movement.
-function stepPoseTrail(imu, enc) {
-  const now = performance.now();
-  if (poseLastT === null) { poseLastT = now; return; }
-  const dt = Math.min(0.5, (now - poseLastT) / 1000);
-  poseLastT = now;
-  const avgSpeed = (enc.reduce((sum, e) => sum + Math.abs(e.vel), 0) / (enc.length || 1)) * 0.02;
-  const movement = classifyMovement(enc);
-  let speedForward = 0, speedLateral = 0;
-  if (movement === 'forward') speedForward = avgSpeed;
-  else if (movement === 'backward') speedForward = -avgSpeed;
-  else if (movement === 'slideRight') speedLateral = avgSpeed;
-  else if (movement === 'slideLeft') speedLateral = -avgSpeed;
-  // Heading convention: 0 deg = forward (screen up), positive = clockwise/right turn
-  // (compass-style bearing). Same convention the heading-hold PID should target 0 for.
-  const yawRad = (imu.yaw || 0) * Math.PI / 180;
-  const fx = Math.sin(yawRad), fy = Math.cos(yawRad);   // forward unit vector (world)
-  const rx = Math.cos(yawRad), ry = -Math.sin(yawRad);  // rover's right unit vector (world)
-  poseWorldX += (speedForward * fx + speedLateral * rx) * dt;
-  poseWorldY += (speedForward * fy + speedLateral * ry) * dt;
+function stepPoseTrail(pose) {
+  poseWorldX = pose.x || 0;
+  poseWorldY = pose.y || 0;
   poseTrail.push({ x: poseWorldX, y: poseWorldY });
   if (poseTrail.length > 400) poseTrail.shift();
 }
@@ -285,7 +246,7 @@ function drawPose(imu) {
   const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minY = Math.min(...ys), maxY = Math.max(...ys);
-  const span = Math.max(maxX - minX, maxY - minY, 2);
+  const span = Math.max(maxX - minX, maxY - minY, 1); // meters; 1 m floor keeps a still rover zoomed in
   const scale = (Math.min(w, h) - 50) / span;
   const midX = (minX + maxX) / 2, midY = (minY + maxY) / 2;
   const toCanvas = (x, y) => [cx + (x - midX) * scale, cy - (y - midY) * scale];
@@ -324,9 +285,10 @@ function drawPose(imu) {
   poseCtx.restore();
 }
 
-function renderPose(imu, enc) {
+function renderPose(imu, pose) {
   $('yawVal').textContent = fmt(imu.yaw) + ' deg';
-  stepPoseTrail(imu, enc);
+  $('posVal').textContent = fmt(pose.x) + ', ' + fmt(pose.y) + ' m';
+  stepPoseTrail(pose);
   drawPose(imu);
 }
 function fmt(n) { return (typeof n === 'number') ? n.toFixed(2) : '--'; }
@@ -396,7 +358,7 @@ $('trajectorySelect').addEventListener('change', (evt) => {
 // ---- Telemetry dispatch ----
 function applyTelemetry(d) {
   $('uptime').textContent = 'uptime ' + (d.t / 1000).toFixed(1) + ' s';
-  renderPose(d.imu, d.enc);
+  renderPose(d.imu, d.pose);
   renderCam(d.cam);
   renderEncoders(d.enc);
 }

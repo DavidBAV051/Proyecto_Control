@@ -1,5 +1,6 @@
 #include "motors.h"
 #include "telemetry.h"
+#include "odometry.h"
 
 MotorController motors;
 
@@ -36,9 +37,7 @@ static volatile uint8_t encoderPrevState[NUM_MOTORS] = {0, 0, 0, 0};
 static long             lastEncoderCount[NUM_MOTORS]  = {0, 0, 0, 0};
 static uint32_t         lastEncoderUpdateMs = 0;
 
-// Full quadrature transition table, indexed by (prevState<<2 | newState) where each
-// 2-bit state is (A<<1 | B). Valid single-step transitions map to +-1, everything
-// else (no change / both-edges-at-once glitches) maps to 0.
+// Quadrature transition table: index = (prevState<<2 | newState), see README.md.
 static const int8_t QUAD_TABLE[16] = {
      0, -1,  1,  0,
      1,  0,  0, -1,
@@ -56,9 +55,7 @@ static void IRAM_ATTR onEncoderChange(void *arg) {
 
 static void initEncoders() {
     for (uint8_t m = 0; m < NUM_MOTORS; m++) {
-        // M2/M3 sit on input-only GPIOs with no internal pull resistor: they need
-        // external 10k pull-ups to 3.3V on the hardware (see pins.h). M1/M4 use
-        // regular GPIOs, so the internal pull-up is enough.
+        // M2/M3 are input-only GPIOs, need external pull-ups (see pins.h).
         bool inputOnly = (encoderPinA[m] == M2_ENC_A_PIN) || (encoderPinA[m] == M3_ENC_A_PIN);
         pinMode(encoderPinA[m], inputOnly ? INPUT : INPUT_PULLUP);
         pinMode(encoderPinB[m], inputOnly ? INPUT : INPUT_PULLUP);
@@ -78,6 +75,7 @@ void MotorController::init() {
         }
     }
     initEncoders();
+    odometry_init();
     lastRampMs_ = millis();
 }
 
@@ -110,6 +108,7 @@ void MotorController::updateEncoderTelemetry() {
     if (elapsedMs == 0) return;
     lastEncoderUpdateMs = now;
 
+    float wheelRpm[NUM_MOTORS];
     for (uint8_t m = 0; m < NUM_MOTORS; m++) {
         long rawCount = encoderCount[m]; // 32-bit aligned read, atomic on this core
         long rawDelta = rawCount - lastEncoderCount[m];
@@ -122,7 +121,12 @@ void MotorController::updateEncoderTelemetry() {
         enc.position    = count;
         enc.velocityRpm = (delta / ENCODER_COUNTS_PER_REV[m]) * (60000.0f / elapsedMs);
         telemetry_setEncoder(m, enc);
+        wheelRpm[m] = enc.velocityRpm;
     }
+
+    odometry_update(wheelRpm, telemetry_get().imu.yaw, elapsedMs);
+    OdometryPose pose = odometry_getPose();
+    telemetry_setPose(pose.x, pose.y);
 }
 
 void MotorController::setMotorSpeed(uint8_t motorIndex, int16_t speed) {
