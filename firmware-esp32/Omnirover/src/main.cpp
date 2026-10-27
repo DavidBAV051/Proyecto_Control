@@ -5,6 +5,7 @@
 #include "web_server.h"
 #include "espnow_link.h"
 #include "telemetry.h"
+#include "control.h"
 
 // for setMotorSpeed 0, 1, and 2, positive values move forward, negative values move backward
 // for setMotorSpeed 3, negative values move forwards, positive values move backwards
@@ -14,40 +15,49 @@
 
 static const int16_t DEFAULT_DRIVE_SPEED = 190;
 static const int16_t DEFAULT_SLIDE_SPEED = 190;
+static const int16_t DEFAULT_CIRCLE_SPEED = 190;
 static const uint32_t SAFE_START_DELAY_MS = 2000; // wait before first motor command
 static const uint32_t MOVE_DURATION_MS = 1000;
 static const uint32_t STOP_PAUSE_MS = 500;
 
+void moveCircle(int16_t speed = DEFAULT_CIRCLE_SPEED)
+{
+    motors.setMotorSpeed(0, speed-100);
+    motors.setMotorSpeed(1, speed);
+    motors.setMotorSpeed(2, speed-100);
+    motors.setMotorSpeed(3, -speed);
+}
+
 void moveForward(int16_t speed = DEFAULT_DRIVE_SPEED)
 {
-    motors.setMotorSpeedRamped(0, speed);
-    motors.setMotorSpeedRamped(1, speed);
-    motors.setMotorSpeedRamped(2, speed);
-    motors.setMotorSpeedRamped(3, -speed);
+    motors.setMotorSpeed(0, speed);
+    motors.setMotorSpeed(1, speed);
+    motors.setMotorSpeed(2, speed);
+    motors.setMotorSpeed(3, -speed);
 }
 
 void moveBackward(int16_t speed = DEFAULT_DRIVE_SPEED)
 {
-    motors.setMotorSpeedRamped(0, -speed);
-    motors.setMotorSpeedRamped(1, -speed);
-    motors.setMotorSpeedRamped(2, -speed);
-    motors.setMotorSpeedRamped(3, speed);
+    motors.setMotorSpeed(0, -speed);
+    motors.setMotorSpeed(1, -speed);
+    motors.setMotorSpeed(2, -speed);
+    motors.setMotorSpeed(3, speed);
 }
 
 void slideRight(int16_t speed = DEFAULT_SLIDE_SPEED)
 {
-    motors.setMotorSpeedRamped(0, speed);
-    motors.setMotorSpeedRamped(1, -speed);
-    motors.setMotorSpeedRamped(2, -speed);
-    motors.setMotorSpeedRamped(3, -speed);
+    motors.setMotorSpeed(0, speed);
+    motors.setMotorSpeed(1, -speed);
+    motors.setMotorSpeed(2, -speed);
+    motors.setMotorSpeed(3, -speed);
 }
 
 void slideLeft(int16_t speed = DEFAULT_SLIDE_SPEED)
 {
-    motors.setMotorSpeedRamped(0, -speed);
-    motors.setMotorSpeedRamped(1, speed);
-    motors.setMotorSpeedRamped(2, speed);
-    motors.setMotorSpeedRamped(3, speed);
+    motors.setMotorSpeed(0, -speed);
+    motors.setMotorSpeed(1, speed);
+    motors.setMotorSpeed(2, speed);
+    motors.setMotorSpeed(3, speed);
 }
 
 void stopAllMotors()
@@ -55,16 +65,13 @@ void stopAllMotors()
     motors.stopAll();
 }
 
-// Non-blocking (no delay()) step sequences: update_IMU()/telemetry_setIMU() need to
-// keep running every loop() iteration during a maneuver so the dashboard pose trail
-// doesn't freeze while the rover is driving a leg.
+// Non-blocking (no delay()) square trajectory: loops forward->slideRight->
+// backward->slideLeft forever while selected and running, so the Stop button
+// (control_isRunning()) and dashboard telemetry both stay responsive.
 struct TrajectoryStep {
     void (*action)();
     uint32_t durationMs;
 };
-
-// Traces a square while keeping the chassis heading fixed (strafe instead of turning
-// at the corners), using only the drive primitives already defined above.
 static const TrajectoryStep SQUARE_TRAJECTORY[] = {
     { []() { moveForward(); },  MOVE_DURATION_MS },
     { stopAllMotors,            STOP_PAUSE_MS },
@@ -76,34 +83,42 @@ static const TrajectoryStep SQUARE_TRAJECTORY[] = {
     { stopAllMotors,            STOP_PAUSE_MS },
 };
 static const uint8_t SQUARE_STEP_COUNT = sizeof(SQUARE_TRAJECTORY) / sizeof(SQUARE_TRAJECTORY[0]);
+static int8_t squareStepIndex = -1; // -1 = not started yet
+static uint32_t squareStepStartMs = 0;
 
-static int8_t trajectoryStepIndex = -1; // -1 = not started yet
-static uint32_t trajectoryStepStartMs = 0;
+void resetSquareTrajectory()
+{
+    squareStepIndex = -1;
+}
 
-// Call every loop() iteration; advances one step of SQUARE_TRAJECTORY once its
-// durationMs has elapsed, then stops (does not repeat).
+// Call every loop() iteration while running the square trajectory; advances to
+// the next step once the current one's durationMs has elapsed, looping forever.
 void runSquareTrajectory()
 {
-    if (trajectoryStepIndex >= (int8_t)SQUARE_STEP_COUNT) return; // finished
-
     uint32_t now = millis();
-    if (trajectoryStepIndex < 0) {
-        trajectoryStepIndex = 0;
-        trajectoryStepStartMs = now;
-        Serial.println("Square trajectory: step 1/8");
+    if (squareStepIndex < 0) {
+        squareStepIndex = 0;
+        squareStepStartMs = now;
         SQUARE_TRAJECTORY[0].action();
         return;
     }
+    if (now - squareStepStartMs >= SQUARE_TRAJECTORY[squareStepIndex].durationMs) {
+        squareStepIndex = (squareStepIndex + 1) % SQUARE_STEP_COUNT;
+        squareStepStartMs = now;
+        SQUARE_TRAJECTORY[squareStepIndex].action();
+    }
+}
 
-    if (now - trajectoryStepStartMs >= SQUARE_TRAJECTORY[trajectoryStepIndex].durationMs) {
-        trajectoryStepIndex++;
-        if (trajectoryStepIndex < (int8_t)SQUARE_STEP_COUNT) {
-            trajectoryStepStartMs = now;
-            Serial.printf("Square trajectory: step %d/%d\n", trajectoryStepIndex + 1, SQUARE_STEP_COUNT);
-            SQUARE_TRAJECTORY[trajectoryStepIndex].action();
-        } else {
-            Serial.println("Square trajectory: complete.");
-        }
+// Reads + broadcasts IMU data and throttles the serial print to ~5Hz; call this
+// every loop() iteration so the dashboard/serial output never goes stale.
+static uint32_t lastImuPrintMs = 0;
+void pollIMU()
+{
+    update_IMU();
+    telemetry_setIMU(get_IMU_Data());
+    if (millis() - lastImuPrintMs >= 200) {
+        lastImuPrintMs = millis();
+        print_IMU_Data();
     }
 }
 
@@ -132,31 +147,46 @@ void setup()
     espNow_init();
 
     // initHuskyLens();
-    motors.init();
-    motors.stopAll();
-
-    // IMU bring-up: motors stay idle below while this is being validated.
     if (init_IMU()) {
         Serial.println("BNO08x online.");
     } else {
         Serial.println("Error: BNO08x not detected.");
         while (1) { delay(1000); }
     }
+    motors.init();
+    motors.stopAll();
+    Serial.println("DRV8871 Motor Controller Ready.");
 
     waitForSafeStart();
 }
 
 void loop()
 {
-    static uint32_t lastPrint = 0;
-    update_IMU();
-    motors.update(); // advance any in-progress speed ramp
-    telemetry_setIMU(get_IMU_Data());
-    if (millis() - lastPrint >= 200) {
-        lastPrint = millis();
-        print_IMU_Data();
+    pollIMU();
+
+    static bool wasRunning = false;
+    static RoverTrajectory lastTrajectory = TRAJ_SQUARE;
+    bool running = control_isRunning();
+    RoverTrajectory trajectory = control_getTrajectory();
+
+    if (!running) {
+        if (wasRunning) {
+            stopAllMotors();
+            resetSquareTrajectory();
+        }
+    } else {
+        if (!wasRunning || trajectory != lastTrajectory) {
+            resetSquareTrajectory(); // fresh start when (re)starting or switching trajectory
+        }
+        if (trajectory == TRAJ_SQUARE) {
+            runSquareTrajectory();
+        } else {
+            moveCircle(); // continuous arc, no discrete steps to advance
+        }
     }
-    runSquareTrajectory();
+    wasRunning = running;
+    lastTrajectory = trajectory;
+
     // Without this, loop() never blocks/yields, starving the IDLE task and tripping the
     // Task Watchdog (periodic reboot -> dashboard WiFi/WebSocket disconnects + lag).
     delay(1);

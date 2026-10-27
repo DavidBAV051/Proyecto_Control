@@ -111,10 +111,10 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
   /* Rover photo card */
   .robot-card { display: flex; flex-direction: column; }
   .robot-photo {
-    position: relative; width: 100%; aspect-ratio: 4 / 3;
+    position: relative; width: 65%; aspect-ratio: 1 / 1;
     background: #f2f2f4; border-radius: 12px; overflow: hidden;
     display: flex; align-items: center; justify-content: center;
-    margin-bottom: 14px;
+    margin: 0 auto 14px;
   }
   .robot-photo img { width: 100%; height: 100%; object-fit: cover; display: none; }
   .robot-placeholder { color: var(--text-secondary); font-size: .85rem; }
@@ -126,6 +126,21 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
     transition: background .15s;
   }
   .btn:hover { background: rgba(0, 113, 227, .18); }
+
+  /* Rover control card */
+  select#trajectorySelect {
+    padding: 9px 10px; border-radius: 10px; border: 1px solid var(--card-border);
+    font-size: .9rem; font-family: inherit; color: var(--text); background: var(--card-bg);
+  }
+  .control-row { display: flex; gap: 10px; align-items: center; }
+  .control-row select#trajectorySelect { flex: 1; }
+  .control-row button.btn {
+    flex: 1; border: none; font-family: inherit; font-size: .9rem;
+  }
+  #startBtn { background: var(--green-soft); color: var(--green); }
+  #startBtn:hover { background: rgba(52, 199, 89, .2); }
+  #stopBtn { background: rgba(255, 59, 48, .12); color: var(--red); }
+  #stopBtn:hover { background: rgba(255, 59, 48, .2); }
 </style>
 </head>
 <body>
@@ -166,9 +181,21 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
     </div>
   </div>
 
-  <div class="card" style="grid-column: 1 / -1;">
+  <div class="card" style="grid-column: span 2;">
     <h2>Encoders</h2>
     <div id="encoders"></div>
+  </div>
+
+  <div class="card" style="grid-column: span 1;">
+    <h2>Rover Control</h2>
+    <div class="control-row">
+      <select id="trajectorySelect">
+        <option value="square">Square</option>
+        <option value="circle">Circle</option>
+      </select>
+      <button class="btn" id="startBtn">Start</button>
+      <button class="btn" id="stopBtn">Stop</button>
+    </div>
   </div>
 </div>
 </main>
@@ -197,25 +224,45 @@ const poseCtx = poseCanvas.getContext('2d');
 let poseTrail = [];
 let poseWorldX = 0, poseWorldY = 0;
 let poseLastT = null;
-let lateralVel = 0; // leaky-integrated sideways (body-frame) velocity, from accelY
 
-// Dead-reckons an approximate path from mean wheel speed (enc[].vel, rpm) for the
-// forward component, IMU yaw for heading, and accelY (body-frame sideways accel)
-// for the lateral/strafe component the drive encoders can't see on their own
-// (e.g. during a pure slideLeft/slideRight). Units are arbitrary (not real-world
-// distance) since wheel radius isn't modeled here; good enough to visualize
-// direction/shape of movement.
+// Motor index reference (matches src/main.cpp): 0 = back right, 1 = back left,
+// 2 = front right, 3 = front left.
+// BNO accel was too noisy/bouncy to represent strafe reliably, so forward/lateral
+// motion is now classified directly from the known commanded-direction sign table
+// (moveForward/moveBackward/slideRight/slideLeft in main.cpp) instead of accelerometer
+// data. The IMU is only used for yaw/heading now.
+const ENC_DEADBAND_RPM = 5; // ignore vel below this as noise/creep, treat as stopped
+function classifyMovement(enc) {
+  const v = [0, 1, 2, 3].map(i => (enc[i] && enc[i].vel) || 0);
+  const s = v.map(x => (Math.abs(x) > ENC_DEADBAND_RPM ? Math.sign(x) : 0));
+  // v3 is redundant for forward/backward (same sign as v0-v2 once ENCODER_DIR
+  // normalizes it in motors.cpp), so only v0-v2 are checked here.
+  // Circle-tracing also drives only one side at a time (skid-steer arc): right side
+  // (M0/M2) on with left side (M1/M3) stopped, or vice versa, counts the same way.
+  const rightOnly = s[0] !== 0 && s[0] === s[2] && s[1] === 0 && s[3] === 0;
+  const leftOnly = s[1] !== 0 && s[1] === s[3] && s[0] === 0 && s[2] === 0;
+  if ((s[0] > 0 && s[1] > 0 && s[2] > 0) || (rightOnly && s[0] > 0) || (leftOnly && s[1] > 0)) return 'forward';
+  if ((s[0] < 0 && s[1] < 0 && s[2] < 0) || (rightOnly && s[0] < 0) || (leftOnly && s[1] < 0)) return 'backward';
+  if (s[0] > 0 && s[1] < 0 && s[2] < 0) return 'slideRight';
+  if (s[0] < 0 && s[1] > 0 && s[2] > 0) return 'slideLeft';
+  return 'stopped';
+}
+
+// Dead-reckons an approximate path from encoder-derived forward/lateral speed and
+// IMU yaw for heading. Units are arbitrary (not real-world distance) since wheel
+// radius isn't modeled; good enough to visualize direction/shape of movement.
 function stepPoseTrail(imu, enc) {
   const now = performance.now();
   if (poseLastT === null) { poseLastT = now; return; }
   const dt = Math.min(0.5, (now - poseLastT) / 1000);
   poseLastT = now;
-  const avgVel = enc.reduce((sum, e) => sum + e.vel, 0) / (enc.length || 1);
-  const speedForward = avgVel * 0.02;
-  // Plain double integration of accelY drifts too fast to be usable, so leak the
-  // velocity estimate back toward zero each step instead of integrating forever.
-  lateralVel = (lateralVel + (imu.ay || 0) * dt) * 0.9;
-  const speedLateral = lateralVel;
+  const avgSpeed = (enc.reduce((sum, e) => sum + Math.abs(e.vel), 0) / (enc.length || 1)) * 0.02;
+  const movement = classifyMovement(enc);
+  let speedForward = 0, speedLateral = 0;
+  if (movement === 'forward') speedForward = avgSpeed;
+  else if (movement === 'backward') speedForward = -avgSpeed;
+  else if (movement === 'slideRight') speedLateral = avgSpeed;
+  else if (movement === 'slideLeft') speedLateral = -avgSpeed;
   // Heading convention: 0 deg = forward (screen up), positive = clockwise/right turn
   // (compass-style bearing). Same convention the heading-hold PID should target 0 for.
   const yawRad = (imu.yaw || 0) * Math.PI / 180;
@@ -337,6 +384,13 @@ $('robotFile').addEventListener('change', async (evt) => {
     refreshRobotPhoto();
   } catch (e) { /* upload failed, keep previous photo */ }
   label.textContent = original;
+});
+
+// ---- Rover control module ----
+$('startBtn').addEventListener('click', () => fetch('/control?cmd=start'));
+$('stopBtn').addEventListener('click', () => fetch('/control?cmd=stop'));
+$('trajectorySelect').addEventListener('change', (evt) => {
+  fetch('/control?trajectory=' + evt.target.value);
 });
 
 // ---- Telemetry dispatch ----
