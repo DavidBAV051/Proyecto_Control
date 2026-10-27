@@ -5,6 +5,7 @@
 #include "net_config.h"
 #include "telemetry.h"
 #include "motors.h"
+#include "control.h"
 #include "web_dashboard_html.h"
 
 static AsyncWebServer server(WEB_SERVER_PORT);
@@ -59,7 +60,7 @@ static void telemetryTask(void *param) {
     (void)param;
     for (;;) {
 #if ROVER_LINK_MODE != LINK_MODE_ESPNOW_BASE
-        telemetry_simulate(); // TODO: drop once IMU/cam are wired in
+        telemetry_simulateCam(); // TODO: drop once HuskyLens is wired in
         motors.updateEncoderTelemetry(); // real encoder reads, not a placeholder
 #endif
         if (ws.count() > 0) {
@@ -72,6 +73,7 @@ static void telemetryTask(void *param) {
 
 void webServer_init() {
     telemetry_init();
+    control_init();
 
     if (!LittleFS.begin(true)) {
         Serial.println("LittleFS mount failed, rover photo upload unavailable");
@@ -106,6 +108,23 @@ void webServer_init() {
         "/upload", HTTP_POST,
         [](AsyncWebServerRequest *request) { request->send(200, "text/plain", "ok"); },
         handleRobotImageUpload);
+
+    // Dashboard Start/Stop buttons + trajectory selector, e.g. /control?cmd=start
+    // or /control?trajectory=circle. GET (not strictly RESTful) keeps the client
+    // side to a plain fetch() with no JSON body parsing needed on either end.
+    server.on("/control", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (request->hasParam("cmd")) {
+            String cmd = request->getParam("cmd")->value();
+            if (cmd == "start") control_start();
+            else if (cmd == "stop") control_stop();
+        }
+        if (request->hasParam("trajectory")) {
+            String traj = request->getParam("trajectory")->value();
+            if (traj == "circle") control_setTrajectory(TRAJ_CIRCLE);
+            else if (traj == "square") control_setTrajectory(TRAJ_SQUARE);
+        }
+        request->send(200, "text/plain", "ok");
+    });
 
     server.begin();
 

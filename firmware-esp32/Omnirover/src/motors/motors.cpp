@@ -78,6 +78,30 @@ void MotorController::init() {
         }
     }
     initEncoders();
+    lastRampMs_ = millis();
+}
+
+void MotorController::setMotorSpeedRamped(uint8_t motorIndex, int16_t targetSpeed) {
+    if (motorIndex >= NUM_MOTORS) return;
+    targetSpeed_[motorIndex] = constrain(targetSpeed, -255, 255);
+}
+
+void MotorController::update() {
+    uint32_t now = millis();
+    uint32_t elapsedMs = now - lastRampMs_;
+    if (elapsedMs == 0) return;
+    lastRampMs_ = now;
+
+    int32_t maxStep = (int32_t)((255UL * elapsedMs) / RAMP_TIME_MS);
+    if (maxStep < 1) maxStep = 1;
+
+    for (uint8_t m = 0; m < NUM_MOTORS; m++) {
+        int16_t diff = targetSpeed_[m] - currentSpeed_[m];
+        if (diff == 0) continue;
+        int16_t step = (int16_t)min((int32_t)abs(diff), maxStep);
+        currentSpeed_[m] += (diff > 0) ? step : -step;
+        setMotorSpeed(m, currentSpeed_[m]);
+    }
 }
 
 void MotorController::updateEncoderTelemetry() {
@@ -98,10 +122,6 @@ void MotorController::updateEncoderTelemetry() {
         enc.position    = count;
         enc.velocityRpm = (delta / ENCODER_COUNTS_PER_REV[m]) * (60000.0f / elapsedMs);
         telemetry_setEncoder(m, enc);
-        // Raw A/B levels help tell a disconnected/dead encoder (pins never change)
-        // apart from a decode bug (pins toggle but count doesn't move).
-        Serial.printf("Enc M%u: %ld pulses (%.0f rpm) | A=%d B=%d\n", m, enc.position,
-                      enc.velocityRpm, digitalRead(encoderPinA[m]), digitalRead(encoderPinB[m]));
     }
 }
 
@@ -130,6 +150,12 @@ void MotorController::setMotorSpeed(uint8_t motorIndex, int16_t speed) {
 
 void MotorController::stopMotor(uint8_t motorIndex) {
     setMotorSpeed(motorIndex, 0);
+    if (motorIndex < NUM_MOTORS) {
+        // Keep ramp state in sync so a later setMotorSpeedRamped() doesn't jump
+        // from a stale non-zero "current" value.
+        currentSpeed_[motorIndex] = 0;
+        targetSpeed_[motorIndex] = 0;
+    }
 }
 
 void MotorController::stopAll() {

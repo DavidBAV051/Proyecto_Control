@@ -32,7 +32,7 @@
 #define WEB_SERVER_PORT  80
 
 // ---- Telemetry ----
-#define TELEMETRY_BROADCAST_INTERVAL_MS 200 // 5 Hz push rate over WebSocket/ESP-NOW
+#define TELEMETRY_BROADCAST_INTERVAL_MS 100 // 10 Hz push rate over WebSocket/ESP-NOW
 
 // ---- ESP-NOW pairing ----
 // Replace with the peer's real MAC address once the base/rover pair is known.

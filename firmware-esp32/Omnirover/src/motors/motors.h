@@ -31,6 +31,12 @@ public:
     void stopMotor(uint8_t motorIndex);
     void stopAll();
 
+    // Sets a target speed that update() ramps toward gradually (instead of an instant
+    // jump), so 4 motors starting together don't all spike current at once and brown
+    // out / trip the shared battery. Call update() every loop() iteration.
+    void setMotorSpeedRamped(uint8_t motorIndex, int16_t targetSpeed);
+    void update();
+
     // Reads the latest quadrature pulse counts and pushes position/RPM to
     // telemetry for all motors. Call periodically (e.g. from the telemetry task).
     void updateEncoderTelemetry();
@@ -38,6 +44,11 @@ public:
 private:
     static const uint32_t PWM_FREQ = 20000; // 20 kHz ultrasonic frequency
     static const uint8_t  PWM_RES  = 8;     // 8-bit resolution (0 - 255)
+    static const uint32_t RAMP_TIME_MS = 300; // time to ramp 0 -> full duty
+
+    int16_t  currentSpeed_[NUM_MOTORS] = {0, 0, 0, 0};
+    int16_t  targetSpeed_[NUM_MOTORS]  = {0, 0, 0, 0};
+    uint32_t lastRampMs_ = 0;
 };
 
 extern MotorController motors;
