@@ -6,6 +6,7 @@
 #include "telemetry.h"
 #include "motors.h"
 #include "control.h"
+#include "odometry.h"
 #include "web_dashboard_html.h"
 
 static AsyncWebServer server(WEB_SERVER_PORT);
@@ -115,10 +116,16 @@ void webServer_init() {
             String cmd = request->getParam("cmd")->value();
             if (cmd == "start") control_start();
             else if (cmd == "stop") control_stop();
+            else if (cmd == "resetPose") {
+                odometry_reset();
+                OdometryPose pose = odometry_getPose();
+                telemetry_setPose(pose.x, pose.y);
+            }
         }
         if (request->hasParam("trajectory")) {
             String traj = request->getParam("trajectory")->value();
             if (traj == "circle") control_setTrajectory(TRAJ_CIRCLE);
+            else if (traj == "forward") control_setTrajectory(TRAJ_FORWARD);
             else if (traj == "square") control_setTrajectory(TRAJ_SQUARE);
         }
         request->send(200, "text/plain", "ok");

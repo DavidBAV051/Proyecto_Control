@@ -18,11 +18,13 @@ static void enable_reports() {
     // SH2_TEMPERATURE dropped: this unit's firmware never emits it.
 }
 
-// atan2-based yaw extraction from a unit quaternion.
+// atan2-based yaw extraction from a unit quaternion. BNO08x's quaternion frame
+// is counterclockwise-positive (right-hand rule about +Z); negated here so the
+// output matches this project's clockwise-positive/compass convention (see README.md).
 static float quaternionToYawDeg(float qr, float qi, float qj, float qk) {
     float sqr = qr * qr, sqi = qi * qi, sqj = qj * qj, sqk = qk * qk;
     float yaw = atan2f(2.0f * (qi * qj + qk * qr), (sqi - sqj - sqk + sqr));
-    return yaw * RAD_TO_DEG;
+    return -yaw * RAD_TO_DEG;
 }
 
 // Keeps a yaw angle in (-180, 180] after subtracting the zero offset below.

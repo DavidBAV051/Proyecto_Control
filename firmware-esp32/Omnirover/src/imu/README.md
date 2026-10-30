@@ -22,7 +22,11 @@ Archivos: [`imu.h`](imu.h), [`imu.cpp`](imu.cpp)
 magnetómetro**, así que no tiene una referencia absoluta — su "cero" es la
 orientación del chip al bootear/resetear, que es arbitraria. Este firmware:
 
-1. Extrae yaw del quaternion con `atan2` (`quaternionToYawDeg()`).
+1. Extrae yaw del quaternion con `atan2` (`quaternionToYawDeg()`), **negado**:
+   el quaternion del BNO08x sigue la regla de la mano derecha sobre +Z
+   (antihorario-positivo), opuesto a la convención de brújula que usa este
+   firmware — sin la negación, girar en sentido horario se reportaba como
+   grados negativos (bug corregido 2026-10-27).
 2. Captura la primera lectura después de boot/reset como offset
    (`yawOffsetDeg`) y reporta todo relativo a ella, para que "yaw=0" siempre
    signifique "la orientación que tenía el chasis cuando arrancó el firmware".

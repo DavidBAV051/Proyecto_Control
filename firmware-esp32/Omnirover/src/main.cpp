@@ -13,9 +13,9 @@
 // Motor index reference:
 //   0 = back right, 1 = back left, 2 = front right, 3 = front left
 
-static const int16_t DEFAULT_DRIVE_SPEED = 190;
-static const int16_t DEFAULT_SLIDE_SPEED = 190;
-static const int16_t DEFAULT_CIRCLE_SPEED = 190;
+static const int16_t DEFAULT_DRIVE_SPEED = 217; // motor 1 (motorMaxDuty=255) sits at 85% duty here
+static const int16_t DEFAULT_SLIDE_SPEED = 217;
+static const int16_t DEFAULT_CIRCLE_SPEED = 217;
 static const uint32_t SAFE_START_DELAY_MS = 2000; // wait before first motor command
 static const uint32_t MOVE_DURATION_MS = 1000;
 static const uint32_t STOP_PAUSE_MS = 500;
@@ -180,6 +180,8 @@ void loop()
         }
         if (trajectory == TRAJ_SQUARE) {
             runSquareTrajectory();
+        } else if (trajectory == TRAJ_FORWARD) {
+            moveForward(); // continuous straight-line drive, no steps to advance
         } else {
             moveCircle(); // continuous arc, no discrete steps to advance
         }

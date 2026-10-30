@@ -141,6 +141,10 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
   #startBtn:hover { background: rgba(52, 199, 89, .2); }
   #stopBtn { background: rgba(255, 59, 48, .12); color: var(--red); }
   #stopBtn:hover { background: rgba(255, 59, 48, .2); }
+  #resetPoseBtn {
+    width: 100%; margin-top: 10px; background: #f2f2f4; color: var(--text-secondary);
+  }
+  #resetPoseBtn:hover { background: #e6e6e9; }
 </style>
 </head>
 <body>
@@ -170,6 +174,7 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
     <canvas id="poseCanvas" width="260" height="220"></canvas>
     <div class="pose-readout"><span>Yaw</span><span class="val" id="yawVal">--</span></div>
     <div class="pose-readout"><span>X / Y</span><span class="val" id="posVal">--</span></div>
+    <button class="btn" id="resetPoseBtn">Reset Position</button>
   </div>
 
   <div class="card">
@@ -193,6 +198,7 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
       <select id="trajectorySelect">
         <option value="square">Square</option>
         <option value="circle">Circle</option>
+        <option value="forward">Forward</option>
       </select>
       <button class="btn" id="startBtn">Start</button>
       <button class="btn" id="stopBtn">Stop</button>
@@ -235,6 +241,54 @@ function stepPoseTrail(pose) {
   if (poseTrail.length > 400) poseTrail.shift();
 }
 
+// Rounds a world-unit span down to a "nice" grid step (1/2/5 x10^n) so the
+// axis grid shows readable meter increments instead of arbitrary fractions.
+function niceGridStep(span) {
+  const rough = span / 5;
+  const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+  const norm = rough / mag;
+  if (norm < 1.5) return 1 * mag;
+  if (norm < 3.5) return 2 * mag;
+  if (norm < 7.5) return 5 * mag;
+  return 10 * mag;
+}
+
+// Draws a light meter grid plus bold X/Y axes through the world origin, so the
+// rover's position can be read relative to (0,0), not just relative to its own trail.
+function drawPoseAxes(toCanvas, minX, maxX, minY, maxY) {
+  const w = poseCanvas.width, h = poseCanvas.height;
+  const step = niceGridStep(Math.max(maxX - minX, maxY - minY, 1));
+  const decimals = step < 1 ? 1 : 0;
+
+  poseCtx.lineWidth = 1;
+  poseCtx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
+  poseCtx.fillStyle = '#8a8a8e';
+
+  for (let gx = Math.floor(minX / step) * step; gx <= maxX + step; gx += step) {
+    const [cxp] = toCanvas(gx, 0);
+    poseCtx.strokeStyle = Math.abs(gx) < step / 2 ? '#aeaeb2' : 'rgba(0, 0, 0, .07)';
+    poseCtx.beginPath();
+    poseCtx.moveTo(cxp, 0);
+    poseCtx.lineTo(cxp, h);
+    poseCtx.stroke();
+    if (Math.abs(gx) >= step / 2) poseCtx.fillText(gx.toFixed(decimals), cxp + 2, h - 4);
+  }
+  for (let gy = Math.floor(minY / step) * step; gy <= maxY + step; gy += step) {
+    const [, cyp] = toCanvas(0, gy);
+    poseCtx.strokeStyle = Math.abs(gy) < step / 2 ? '#aeaeb2' : 'rgba(0, 0, 0, .07)';
+    poseCtx.beginPath();
+    poseCtx.moveTo(0, cyp);
+    poseCtx.lineTo(w, cyp);
+    poseCtx.stroke();
+    if (Math.abs(gy) >= step / 2) poseCtx.fillText(gy.toFixed(decimals), 2, cyp - 2);
+  }
+
+  const [ox, oy] = toCanvas(0, 0);
+  poseCtx.fillStyle = '#636366';
+  poseCtx.fillText('X', w - 10, oy - 4);
+  poseCtx.fillText('Y', ox + 4, 10);
+}
+
 function drawPose(imu) {
   const w = poseCanvas.width, h = poseCanvas.height;
   const cx = w / 2, cy = h / 2;
@@ -243,13 +297,17 @@ function drawPose(imu) {
   poseCtx.fillRect(0, 0, w, h);
 
   const pts = poseTrail.length ? poseTrail : [{ x: poseWorldX, y: poseWorldY }];
-  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  // Origin is always included in the bounds so it (and the axes) stay visible
+  // even if the rover has driven far away or the trail hasn't reached it yet.
+  const xs = pts.map(p => p.x).concat([0]), ys = pts.map(p => p.y).concat([0]);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minY = Math.min(...ys), maxY = Math.max(...ys);
   const span = Math.max(maxX - minX, maxY - minY, 1); // meters; 1 m floor keeps a still rover zoomed in
   const scale = (Math.min(w, h) - 50) / span;
   const midX = (minX + maxX) / 2, midY = (minY + maxY) / 2;
   const toCanvas = (x, y) => [cx + (x - midX) * scale, cy - (y - midY) * scale];
+
+  drawPoseAxes(toCanvas, minX, maxX, minY, maxY);
 
   if (pts.length > 1) {
     poseCtx.lineWidth = 2;
@@ -353,6 +411,14 @@ $('startBtn').addEventListener('click', () => fetch('/control?cmd=start'));
 $('stopBtn').addEventListener('click', () => fetch('/control?cmd=stop'));
 $('trajectorySelect').addEventListener('change', (evt) => {
   fetch('/control?trajectory=' + evt.target.value);
+});
+$('resetPoseBtn').addEventListener('click', () => {
+  fetch('/control?cmd=resetPose');
+  // Clear the local trail immediately instead of waiting for the next telemetry
+  // push, so the trail doesn't draw a stray line from the old position to (0,0).
+  poseTrail = [];
+  poseWorldX = 0;
+  poseWorldY = 0;
 });
 
 // ---- Telemetry dispatch ----

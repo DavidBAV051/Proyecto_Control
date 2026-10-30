@@ -30,7 +30,7 @@ de motores bloqueante.
 | `/` | GET | Sirve `DASHBOARD_HTML` (con `Cache-Control: no-store` para no servir una versión vieja tras reflashear). |
 | `/robot.jpg` | GET | Sirve la foto subida desde LittleFS, o 404 si no hay ninguna. |
 | `/upload` | POST (multipart) | Guarda una foto nueva en `/robot.jpg` (tope de 400 KB, `handleRobotImageUpload()`). |
-| `/control` | GET | `?cmd=start\|stop` y/o `?trajectory=square\|circle` -> `control.cpp`. GET en vez de POST a propósito: el cliente solo hace `fetch()` sin armar body. |
+| `/control` | GET | `?cmd=start\|stop\|resetPose` y/o `?trajectory=square\|circle\|forward` -> `control.cpp`/`odometry.cpp`. GET en vez de POST a propósito: el cliente solo hace `fetch()` sin armar body. |
 | `/ws` | WebSocket | Empuje periódico de telemetría (JSON), ver `telemetry.cpp`. |
 
 ## Dashboard (`web_dashboard_html.h`)
