@@ -7,6 +7,7 @@
 enum RoverTrajectory {
     TRAJ_SQUARE = 0,
     TRAJ_CIRCLE = 1,
+    TRAJ_FORWARD = 2,
 };
 
 void control_init();
