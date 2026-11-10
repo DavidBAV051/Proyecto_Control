@@ -20,14 +20,6 @@ static const uint8_t pwmChannels[NUM_MOTORS][2] = {
     {6, 7}
 };
 
-// Per-motor duty cap so a 100% speed request yields FLEET_RPM_CAP on every wheel
-static const uint8_t motorMaxDuty[NUM_MOTORS] = {
-    (uint8_t)(255UL * FLEET_RPM_CAP / MOTOR_RATED_RPM[0]),
-    (uint8_t)(255UL * FLEET_RPM_CAP / MOTOR_RATED_RPM[1]),
-    (uint8_t)(255UL * FLEET_RPM_CAP / MOTOR_RATED_RPM[2]),
-    (uint8_t)(255UL * FLEET_RPM_CAP / MOTOR_RATED_RPM[3])
-};
-
 // ---- Quadrature encoder reading ----
 static const uint8_t encoderPinA[NUM_MOTORS] = {M1_ENC_A_PIN, M2_ENC_A_PIN, M3_ENC_A_PIN, M4_ENC_A_PIN};
 static const uint8_t encoderPinB[NUM_MOTORS] = {M1_ENC_B_PIN, M2_ENC_B_PIN, M3_ENC_B_PIN, M4_ENC_B_PIN};
@@ -66,6 +58,13 @@ static void initEncoders() {
     lastEncoderUpdateMs = millis();
 }
 
+MotorController::MotorController()
+    : speedPid_{
+        PID(PID_KP[0], PID_KI[0], PID_KD[0], -MAX_WHEEL_RAD_S, MAX_WHEEL_RAD_S),
+        PID(PID_KP[1], PID_KI[1], PID_KD[1], -MAX_WHEEL_RAD_S, MAX_WHEEL_RAD_S),
+        PID(PID_KP[2], PID_KI[2], PID_KD[2], -MAX_WHEEL_RAD_S, MAX_WHEEL_RAD_S),
+        PID(PID_KP[3], PID_KI[3], PID_KD[3], -MAX_WHEEL_RAD_S, MAX_WHEEL_RAD_S)} {}
+
 void MotorController::init() {
     for (uint8_t m = 0; m < NUM_MOTORS; m++) {
         for (uint8_t ch = 0; ch < 2; ch++) {
@@ -77,6 +76,42 @@ void MotorController::init() {
     initEncoders();
     odometry_init();
     lastRampMs_ = millis();
+    lastPidMs_ = millis();
+    for (uint8_t m = 0; m < NUM_MOTORS; m++) {
+        lastPidCount_[m] = encoderCount[m];
+    }
+}
+
+void MotorController::setWheelSpeed(uint8_t motorIndex, float radPerSec) {
+    if (motorIndex >= NUM_MOTORS) return;
+    targetRadS_[motorIndex] = constrain(radPerSec, -MAX_WHEEL_RAD_S, MAX_WHEEL_RAD_S);
+    if (!pidActive_[motorIndex]) {
+        speedPid_[motorIndex].reset();
+        lastPidCount_[motorIndex] = encoderCount[motorIndex];
+        pidActive_[motorIndex] = true;
+    }
+}
+
+void MotorController::updateSpeedControl() {
+    uint32_t now = millis();
+    uint32_t elapsedMs = now - lastPidMs_;
+    if (elapsedMs < PID_PERIOD_MS) return;
+    lastPidMs_ = now;
+    float dt = elapsedMs / 1000.0f;
+
+    for (uint8_t m = 0; m < NUM_MOTORS; m++) {
+        long rawCount = encoderCount[m];
+        long delta = (rawCount - lastPidCount_[m]) * ENCODER_DIR[m];
+        lastPidCount_[m] = rawCount;
+        if (!pidActive_[m]) continue;
+
+        float measuredRadS = (delta / ENCODER_COUNTS_PER_REV[m]) * TWO_PI / dt;
+        float u = speedPid_[m].update(targetRadS_[m], measuredRadS, dt);
+
+        // PID output is a rad/s-equivalent command; MAX_WHEEL_RAD_S = full duty.
+        int16_t cmd = (int16_t)lroundf(u / MAX_WHEEL_RAD_S * 255.0f);
+        setMotorSpeed(m, cmd * MOTOR_CMD_DIR[m]);
+    }
 }
 
 void MotorController::setMotorSpeedRamped(uint8_t motorIndex, int16_t targetSpeed) {
@@ -135,7 +170,7 @@ void MotorController::setMotorSpeed(uint8_t motorIndex, int16_t speed) {
     speed = constrain(speed, -255, 255);
     uint8_t ch1 = pwmChannels[motorIndex][0];
     uint8_t ch2 = pwmChannels[motorIndex][1];
-    uint32_t duty = ((uint32_t)abs(speed) * motorMaxDuty[motorIndex]) / 255;
+    uint32_t duty = (uint32_t)abs(speed);
 
     if (speed > 0) {
         // Forward rotation
@@ -159,6 +194,10 @@ void MotorController::stopMotor(uint8_t motorIndex) {
         // from a stale non-zero "current" value.
         currentSpeed_[motorIndex] = 0;
         targetSpeed_[motorIndex] = 0;
+        // Disable the velocity loop so it doesn't overwrite the stop next tick.
+        pidActive_[motorIndex] = false;
+        targetRadS_[motorIndex] = 0.0f;
+        speedPid_[motorIndex].reset();
     }
 }
 

@@ -2,11 +2,13 @@
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
+#include <ArduinoJson.h>
 #include "net_config.h"
 #include "telemetry.h"
 #include "motors.h"
 #include "control.h"
 #include "odometry.h"
+#include "imu.h"
 #include "web_dashboard_html.h"
 
 static AsyncWebServer server(WEB_SERVER_PORT);
@@ -47,11 +49,19 @@ static void handleRobotImageUpload(AsyncWebServerRequest *request, String filena
 
 static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
                        AwsEventType type, void *arg, uint8_t *data, size_t len) {
-    (void)server; (void)arg; (void)data; (void)len;
+    (void)server;
     if (type == WS_EVT_CONNECT) {
         Serial.printf("WS client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
     } else if (type == WS_EVT_DISCONNECT) {
         Serial.printf("WS client #%u disconnected\n", client->id());
+    } else if (type == WS_EVT_DATA) {
+        // Joystick frames from the dashboard: {"vx":..,"vy":..,"wz":..}, each in [-1, 1].
+        AwsFrameInfo *info = (AwsFrameInfo *)arg;
+        if (!(info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT)) return;
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len) != DeserializationError::Ok) return;
+        if (!doc["vx"].is<float>()) return;
+        control_setManual(doc["vx"].as<float>(), doc["vy"] | 0.0f, doc["wz"] | 0.0f);
     }
 }
 
@@ -64,7 +74,9 @@ static void telemetryTask(void *param) {
         telemetry_simulateCam(); // TODO: drop once HuskyLens is wired in
         motors.updateEncoderTelemetry(); // real encoder reads, not a placeholder
 #endif
-        if (ws.count() > 0) {
+        // Skip the frame if a client's TX queue is still backed up: on a weak link,
+        // queuing more only grows the backlog and the GUI shows ever-staler data.
+        if (ws.count() > 0 && ws.availableForWriteAll()) {
             ws.textAll(telemetry_toJson());
         }
         ws.cleanupClients();
@@ -82,6 +94,8 @@ void webServer_init() {
 
     WiFi.mode(WIFI_AP);
     WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD, WIFI_AP_CHANNEL);
+    WiFi.setTxPower(WIFI_AP_TX_POWER);
+    WiFi.setSleep(false);
     Serial.print("Dashboard AP SSID: ");
     Serial.println(WIFI_AP_SSID);
     Serial.print("Dashboard AP IP: ");
@@ -121,12 +135,14 @@ void webServer_init() {
                 OdometryPose pose = odometry_getPose();
                 telemetry_setPose(pose.x, pose.y);
             }
+            else if (cmd == "resetYaw") imu_zeroYaw();
         }
         if (request->hasParam("trajectory")) {
             String traj = request->getParam("trajectory")->value();
             if (traj == "circle") control_setTrajectory(TRAJ_CIRCLE);
             else if (traj == "forward") control_setTrajectory(TRAJ_FORWARD);
             else if (traj == "square") control_setTrajectory(TRAJ_SQUARE);
+            else if (traj == "manual") control_setTrajectory(TRAJ_MANUAL);
         }
         request->send(200, "text/plain", "ok");
     });

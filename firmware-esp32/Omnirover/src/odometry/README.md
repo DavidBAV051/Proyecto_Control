@@ -61,10 +61,11 @@ $$v_{xr} = \frac{R_w}{4}(\omega_1+\omega_2+\omega_3+\omega_4)$$
 $$v_{yr} = \frac{R_w}{4}(-\omega_1+\omega_2+\omega_3-\omega_4)$$
 $$\omega_{zr} = \frac{R_w}{4(L+l)}(-\omega_1+\omega_2-\omega_3+\omega_4)$$
 
-**Mapeo a los índices de motor de este firmware** (`main.cpp`: 0=atrás-derecha,
-1=atrás-izquierda, 2=adelante-derecha, 3=adelante-izquierda) corresponde a
-$\omega_4=$ motor 0, $\omega_3=$ motor 1, $\omega_2=$ motor 2, $\omega_1=$ motor 3
-en la convención académica de arriba (FL=1, FR=2, RL=3, RR=4). Sustituyendo:
+**Mapeo a los índices de motor de este firmware** (`main.cpp`: 0=adelante-izquierda,
+1=adelante-derecha, 2=atrás-izquierda, 3=atrás-derecha; verificado físicamente
+2026-11-02) es directo: $\omega_1=$ motor 0, $\omega_2=$ motor 1, $\omega_3=$ motor 2,
+$\omega_4=$ motor 3 en la convención académica de arriba (FL=1, FR=2, RL=3, RR=4).
+Sustituyendo:
 
 ```cpp
 float vxBody = (v[0] + v[1] + v[2] + v[3]) / 4.0f;        // == Rw/4 * sum(wi)

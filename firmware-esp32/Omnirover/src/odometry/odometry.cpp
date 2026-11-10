@@ -23,8 +23,8 @@ void odometry_update(const float wheelRpm[4], float yawDeg, uint32_t elapsedMs) 
         v[i] = (wheelRpm[i] / 60.0f) * TWO_PI * WHEEL_RADIUS_M;
     }
 
-    // Standard mecanum forward kinematics (body frame), derived from this rover's
-    // motor index order (0=back right, 1=back left, 2=front right, 3=front left)
+    // Standard mecanum forward kinematics (body frame), using this rover's
+    // motor index order (0=front left, 1=front right, 2=back left, 3=back right)
     // and verified against moveForward()/slideRight()'s commanded sign patterns.
     float vxBody = (v[0] + v[1] + v[2] + v[3]) / 4.0f;        // forward
     float vyBody = (v[0] - v[1] - v[2] + v[3]) / 4.0f;        // lateral, + = right

@@ -30,6 +30,9 @@
 #define WIFI_AP_PASSWORD "omnirover123" // >=8 chars, use "" for an open network
 #define WIFI_AP_CHANNEL  1
 #define WEB_SERVER_PORT  80
+// Radio TX power. Max range is WIFI_POWER_19_5dBm; if the shared LiPo sags under motor
+// load and the ESP32 brownouts/drops the AP, try a lower step (e.g. WIFI_POWER_11dBm).
+#define WIFI_AP_TX_POWER WIFI_POWER_19_5dBm
 
 // ---- Telemetry ----
 #define TELEMETRY_BROADCAST_INTERVAL_MS 100 // 10 Hz push rate over WebSocket/ESP-NOW

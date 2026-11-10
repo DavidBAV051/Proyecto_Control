@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <esp_system.h>
 #include "cam.h"
 #include "imu.h"
 #include "motors.h"
@@ -7,57 +8,153 @@
 #include "telemetry.h"
 #include "control.h"
 
-// for setMotorSpeed 0, 1, and 2, positive values move forward, negative values move backward
-// for setMotorSpeed 3, negative values move forwards, positive values move backwards
+// Wheel speeds are closed-loop setpoints in rad/s; + = forward for every wheel
+// (MotorController applies the per-driver sign). PIDs run in motors.updateSpeedControl().
 
-// Motor index reference:
-//   0 = back right, 1 = back left, 2 = front right, 3 = front left
+// Motor index reference (physical, verified on the rover 2026-11-02):
+//   0 = front left, 1 = front right, 2 = back left, 3 = back right
+// Left side = {0, 2}, right side = {1, 3}.
 
-static const int16_t DEFAULT_DRIVE_SPEED = 217; // motor 1 (motorMaxDuty=255) sits at 85% duty here
-static const int16_t DEFAULT_SLIDE_SPEED = 217;
-static const int16_t DEFAULT_CIRCLE_SPEED = 217;
+static const float DEFAULT_DRIVE_RAD_S  = MAX_WHEEL_RAD_S; // 7.2 rad/s (~69 rpm)
+static const float DEFAULT_SLIDE_RAD_S  = MAX_WHEEL_RAD_S;
+static const float DEFAULT_CIRCLE_RAD_S = MAX_WHEEL_RAD_S;
+static const float CIRCLE_INNER_RATIO   = 0.54f; // left/inner wheels {0,2} vs. right/outer -> arcs left
 static const uint32_t SAFE_START_DELAY_MS = 2000; // wait before first motor command
 static const uint32_t MOVE_DURATION_MS = 1000;
 static const uint32_t STOP_PAUSE_MS = 500;
+static const uint32_t MANUAL_CMD_TIMEOUT_MS = 500; // joystick deadman: stop if no fresh command
 
-void moveCircle(int16_t speed = DEFAULT_CIRCLE_SPEED)
+// Heading hold: PI controller on IMU yaw that trims right/left wheel setpoints so
+// straight segments stay straight despite per-wheel encoder/tire mismatch. The I term
+// removes the steady-state offset a P-only loop leaves against a constant asymmetry.
+static const float HEADING_KP = 0.08f;  // rad/s of wheel differential per degree of yaw error
+static const float HEADING_KI = 0.04f;  // rad/s per degree-second
+static const float HEADING_MAX_CORR_RAD_S = 1.5f;
+static PID   headingPid(HEADING_KP, HEADING_KI, 0.0f, -HEADING_MAX_CORR_RAD_S, HEADING_MAX_CORR_RAD_S);
+static float headingTargetDeg = 0.0f;
+static bool  headingLocked = false;
+static uint32_t headingLastMs = 0;
+static float headingLastCorr = 0.0f;
+
+// Call whenever a new motion segment starts so the next straight move re-captures its heading.
+void releaseHeadingHold()
 {
-    motors.setMotorSpeed(0, speed-100);
-    motors.setMotorSpeed(1, speed);
-    motors.setMotorSpeed(2, speed-100);
-    motors.setMotorSpeed(3, -speed);
+    headingLocked = false;
+    headingPid.reset();
+    headingLastCorr = 0.0f;
 }
 
-void moveForward(int16_t speed = DEFAULT_DRIVE_SPEED)
+// Yaw is compass-style (0 = forward, + = clockwise). Returns the trim in rad/s.
+// Drifting clockwise (+err) -> slow the left side {0,2}, speed up the right {1,3}.
+static float headingHoldCorrection()
 {
-    motors.setMotorSpeed(0, speed);
-    motors.setMotorSpeed(1, speed);
-    motors.setMotorSpeed(2, speed);
-    motors.setMotorSpeed(3, -speed);
+    float yaw = get_IMU_Data().yaw;
+    uint32_t now = millis();
+    if (!headingLocked) {
+        headingTargetDeg = yaw;
+        headingLocked = true;
+        headingLastMs = now;
+    }
+    uint32_t elapsedMs = now - headingLastMs;
+    if (elapsedMs == 0) return headingLastCorr;
+    headingLastMs = now;
+
+    float err = yaw - headingTargetDeg;
+    while (err > 180.0f)  err -= 360.0f;
+    while (err < -180.0f) err += 360.0f;
+    // PID computes setpoint - measurement, so feed the wrapped error as "setpoint" with 0 measurement.
+    headingLastCorr = headingPid.update(err, 0.0f, elapsedMs / 1000.0f);
+    return headingLastCorr;
 }
 
-void moveBackward(int16_t speed = DEFAULT_DRIVE_SPEED)
+// Straight-line setpoints (FL, FR, BL, BR) with heading-hold trim applied. Target heading
+// is whatever yaw the rover had when the segment began, so any start angle works.
+static void driveStraight(float fl, float fr, float bl, float br)
 {
-    motors.setMotorSpeed(0, -speed);
-    motors.setMotorSpeed(1, -speed);
-    motors.setMotorSpeed(2, -speed);
-    motors.setMotorSpeed(3, speed);
+    float c = headingHoldCorrection();
+    motors.setWheelSpeed(0, fl - c);
+    motors.setWheelSpeed(1, fr + c);
+    motors.setWheelSpeed(2, bl - c);
+    motors.setWheelSpeed(3, br + c);
 }
 
-void slideRight(int16_t speed = DEFAULT_SLIDE_SPEED)
+// Inverse mecanum kinematics for joystick input (body frame, all normalized -1..1):
+// vx + = forward, vy + = right, wz + = clockwise. Scaled so the fastest wheel hits
+// MAX_WHEEL_RAD_S without distorting the direction.
+static void driveManual()
 {
-    motors.setMotorSpeed(0, speed);
-    motors.setMotorSpeed(1, -speed);
-    motors.setMotorSpeed(2, -speed);
-    motors.setMotorSpeed(3, -speed);
+    ManualCmd cmd = control_getManual();
+    if (millis() - cmd.timestampMs > MANUAL_CMD_TIMEOUT_MS) {
+        motors.stopAll();
+        return;
+    }
+    float w[NUM_MOTORS] = {
+        cmd.vx + cmd.vy + cmd.wz, // FL
+        cmd.vx - cmd.vy - cmd.wz, // FR
+        cmd.vx - cmd.vy + cmd.wz, // BL
+        cmd.vx + cmd.vy - cmd.wz, // BR
+    };
+    float peak = 0.0f;
+    for (uint8_t i = 0; i < NUM_MOTORS; i++) peak = max(peak, fabsf(w[i]));
+    if (peak < 0.02f) {
+        motors.stopAll(); // centered stick: hard stop instead of letting the integrators unwind
+        return;
+    }
+    float scale = (peak > 1.0f) ? (MAX_WHEEL_RAD_S / peak) : MAX_WHEEL_RAD_S;
+    for (uint8_t i = 0; i < NUM_MOTORS; i++) {
+        motors.setWheelSpeed(i, w[i] * scale);
+    }
 }
 
-void slideLeft(int16_t speed = DEFAULT_SLIDE_SPEED)
+void moveCircle(float speed = DEFAULT_CIRCLE_RAD_S)
 {
-    motors.setMotorSpeed(0, -speed);
-    motors.setMotorSpeed(1, speed);
-    motors.setMotorSpeed(2, speed);
-    motors.setMotorSpeed(3, speed);
+    motors.setWheelSpeed(0, speed * CIRCLE_INNER_RATIO);
+    motors.setWheelSpeed(1, speed);
+    motors.setWheelSpeed(2, speed * CIRCLE_INNER_RATIO);
+    motors.setWheelSpeed(3, speed);
+}
+
+void moveForward(float speed = DEFAULT_DRIVE_RAD_S)
+{
+    driveStraight(speed, speed, speed, speed);
+}
+
+void moveBackward(float speed = DEFAULT_DRIVE_RAD_S)
+{
+    driveStraight(-speed, -speed, -speed, -speed);
+}
+
+void slideRight(float speed = DEFAULT_SLIDE_RAD_S)
+{
+    driveStraight(speed, -speed, -speed, speed);
+}
+
+void slideLeft(float speed = DEFAULT_SLIDE_RAD_S)
+{
+    driveStraight(-speed, speed, speed, -speed);
+}
+
+// Diagonals: only one wheel pair drives (FL+BR or FR+BL), the other pair idles.
+// "Right"/"Left" names the forward diagonal's direction; the backward variants
+// reverse the same pair, so diagonalRightBackward physically moves back-left.
+void diagonalRightForward(float speed = DEFAULT_DRIVE_RAD_S)
+{
+    driveStraight(speed, 0.0f, 0.0f, speed);
+}
+
+void diagonalLeftForward(float speed = DEFAULT_DRIVE_RAD_S)
+{
+    driveStraight(0.0f, speed, speed, 0.0f);
+}
+
+void diagonalRightBackward(float speed = DEFAULT_DRIVE_RAD_S)
+{
+    driveStraight(-speed, 0.0f, 0.0f, -speed);
+}
+
+void diagonalLeftBackward(float speed = DEFAULT_DRIVE_RAD_S)
+{
+    driveStraight(0.0f, -speed, -speed, 0.0f);
 }
 
 void stopAllMotors()
@@ -89,24 +186,24 @@ static uint32_t squareStepStartMs = 0;
 void resetSquareTrajectory()
 {
     squareStepIndex = -1;
+    releaseHeadingHold();
 }
 
-// Call every loop() iteration while running the square trajectory; advances to
-// the next step once the current one's durationMs has elapsed, looping forever.
+// Call every loop() iteration while running the square trajectory. The active
+// step's action is re-applied every iteration (actions are idempotent setpoint
+// writes) so the heading-hold trim keeps updating during a segment.
 void runSquareTrajectory()
 {
     uint32_t now = millis();
     if (squareStepIndex < 0) {
         squareStepIndex = 0;
         squareStepStartMs = now;
-        SQUARE_TRAJECTORY[0].action();
-        return;
-    }
-    if (now - squareStepStartMs >= SQUARE_TRAJECTORY[squareStepIndex].durationMs) {
+    } else if (now - squareStepStartMs >= SQUARE_TRAJECTORY[squareStepIndex].durationMs) {
         squareStepIndex = (squareStepIndex + 1) % SQUARE_STEP_COUNT;
         squareStepStartMs = now;
-        SQUARE_TRAJECTORY[squareStepIndex].action();
+        releaseHeadingHold();
     }
+    SQUARE_TRAJECTORY[squareStepIndex].action();
 }
 
 // Reads + broadcasts IMU data and throttles the serial print to ~5Hz; call this
@@ -139,6 +236,17 @@ void waitForSafeStart(uint32_t delayMs = SAFE_START_DELAY_MS)
 void setup()
 {
     Serial.begin(115200);
+
+    // A BROWNOUT here right after a "lost signal" episode means the shared LiPo
+    // sagged under motor load and reset the ESP32 (the WiFi AP drops with it).
+    esp_reset_reason_t rr = esp_reset_reason();
+    const char *rrName =
+        rr == ESP_RST_BROWNOUT ? "BROWNOUT" :
+        rr == ESP_RST_TASK_WDT ? "TASK_WDT" :
+        rr == ESP_RST_PANIC    ? "PANIC" :
+        rr == ESP_RST_POWERON  ? "POWERON" :
+        rr == ESP_RST_SW       ? "SW" : "OTHER";
+    Serial.printf("Reset reason: %s (%d)\n", rrName, (int)rr);
 
     // Real-time dashboard (WiFi AP + web server, or ESP-NOW bridge depending
     // on ROVER_LINK_MODE in include/net_config.h). Cam telemetry is still
@@ -182,12 +290,16 @@ void loop()
             runSquareTrajectory();
         } else if (trajectory == TRAJ_FORWARD) {
             moveForward(); // continuous straight-line drive, no steps to advance
+        } else if (trajectory == TRAJ_MANUAL) {
+            driveManual(); // joystick from the dashboard, deadman-protected
         } else {
             moveCircle(); // continuous arc, no discrete steps to advance
         }
     }
     wasRunning = running;
     lastTrajectory = trajectory;
+
+    motors.updateSpeedControl(); // per-wheel velocity PIDs, ticks every PID_PERIOD_MS
 
     // Without this, loop() never blocks/yields, starving the IDLE task and tripping the
     // Task Watchdog (periodic reboot -> dashboard WiFi/WebSocket disconnects + lag).

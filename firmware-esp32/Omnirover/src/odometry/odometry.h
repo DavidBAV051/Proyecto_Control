@@ -14,8 +14,8 @@ struct OdometryPose {
 void odometry_init();
 void odometry_reset();
 
-// wheelRpm order matches motor index: 0 = back right, 1 = back left,
-// 2 = front right, 3 = front left (see main.cpp). yawDeg: 0 = forward,
+// wheelRpm order matches motor index: 0 = front left, 1 = front right,
+// 2 = back left, 3 = back right (see main.cpp). yawDeg: 0 = forward,
 // positive = clockwise (same convention as IMU_Data.yaw). elapsedMs: time
 // since the previous call (e.g. MotorController's encoder sample interval).
 void odometry_update(const float wheelRpm[4], float yawDeg, uint32_t elapsedMs);

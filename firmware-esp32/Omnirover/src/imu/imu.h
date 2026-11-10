@@ -20,3 +20,6 @@ bool init_IMU();
 void update_IMU();
 IMU_Data get_IMU_Data();
 void print_IMU_Data();
+
+// Makes the current heading read as yaw = 0 (re-captures the zero offset on the next sample).
+void imu_zeroYaw();

@@ -104,6 +104,10 @@ IMU_Data get_IMU_Data() {
     return current_data;
 }
 
+void imu_zeroYaw() {
+    yawZeroed = false;
+}
+
 void print_IMU_Data() {
     Serial.printf(
         "accel[%.2f, %.2f, %.2f] m/s^2  gyro[%.2f, %.2f, %.2f] rad/s  yaw=%.1fdeg\n",

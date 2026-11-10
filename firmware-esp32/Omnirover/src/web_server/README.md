@@ -30,8 +30,8 @@ de motores bloqueante.
 | `/` | GET | Sirve `DASHBOARD_HTML` (con `Cache-Control: no-store` para no servir una versión vieja tras reflashear). |
 | `/robot.jpg` | GET | Sirve la foto subida desde LittleFS, o 404 si no hay ninguna. |
 | `/upload` | POST (multipart) | Guarda una foto nueva en `/robot.jpg` (tope de 400 KB, `handleRobotImageUpload()`). |
-| `/control` | GET | `?cmd=start\|stop\|resetPose` y/o `?trajectory=square\|circle\|forward` -> `control.cpp`/`odometry.cpp`. GET en vez de POST a propósito: el cliente solo hace `fetch()` sin armar body. |
-| `/ws` | WebSocket | Empuje periódico de telemetría (JSON), ver `telemetry.cpp`. |
+| `/control` | GET | `?cmd=start\|stop\|resetPose\|resetYaw` y/o `?trajectory=square\|circle\|forward\|manual` -> `control.cpp`/`odometry.cpp`/`imu.cpp`. GET en vez de POST a propósito: el cliente solo hace `fetch()` sin armar body. |
+| `/ws` | WebSocket | Servidor->cliente: empuje periódico de telemetría (JSON), ver `telemetry.cpp`. Cliente->servidor: frames de joystick `{"vx","vy","wz"}` en [-1,1] (~10 Hz mientras hay input + un frame en cero al soltar) -> `control_setManual()`. El firmware aplica un deadman de 500 ms (`main.cpp`), así que si se cae el enlace el rover se detiene solo. |
 
 ## Dashboard (`web_dashboard_html.h`)
 

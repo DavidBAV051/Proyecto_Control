@@ -141,10 +141,29 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
   #startBtn:hover { background: rgba(52, 199, 89, .2); }
   #stopBtn { background: rgba(255, 59, 48, .12); color: var(--red); }
   #stopBtn:hover { background: rgba(255, 59, 48, .2); }
-  #resetPoseBtn {
+  #resetPoseBtn, #resetYawBtn {
     width: 100%; margin-top: 10px; background: #f2f2f4; color: var(--text-secondary);
   }
-  #resetPoseBtn:hover { background: #e6e6e9; }
+  #resetPoseBtn:hover, #resetYawBtn:hover { background: #e6e6e9; }
+
+  /* Manual drive (joystick) card */
+  .joy-wrap { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  canvas#joyCanvas {
+    width: 220px; height: 220px; border-radius: 50%; background: #f2f2f4;
+    touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab;
+  }
+  canvas#joyCanvas.active { cursor: grabbing; }
+  .joy-rot { display: flex; gap: 10px; width: 100%; }
+  .joy-rot button.btn {
+    flex: 1; border: none; font-family: inherit; font-size: 1.1rem;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  .joy-rot button.btn.active { background: var(--accent); color: #fff; }
+  .joy-readout {
+    display: flex; gap: 18px; font-size: .8rem; color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+  .joy-hint { font-size: .78rem; color: var(--text-secondary); text-align: center; margin: 0; }
 </style>
 </head>
 <body>
@@ -175,6 +194,7 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
     <div class="pose-readout"><span>Yaw</span><span class="val" id="yawVal">--</span></div>
     <div class="pose-readout"><span>X / Y</span><span class="val" id="posVal">--</span></div>
     <button class="btn" id="resetPoseBtn">Reset Position</button>
+    <button class="btn" id="resetYawBtn">Reset Heading (Yaw = 0)</button>
   </div>
 
   <div class="card">
@@ -199,9 +219,27 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
         <option value="square">Square</option>
         <option value="circle">Circle</option>
         <option value="forward">Forward</option>
+        <option value="manual">Manual (Joystick)</option>
       </select>
       <button class="btn" id="startBtn">Start</button>
       <button class="btn" id="stopBtn">Stop</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Manual Drive</h2>
+    <div class="joy-wrap">
+      <canvas id="joyCanvas" width="220" height="220"></canvas>
+      <div class="joy-rot">
+        <button class="btn" id="rotLeftBtn" title="Rotate left (hold)">&#8634;</button>
+        <button class="btn" id="rotRightBtn" title="Rotate right (hold)">&#8635;</button>
+      </div>
+      <div class="joy-readout">
+        <span>vx <span class="val" id="joyVx">0.00</span></span>
+        <span>vy <span class="val" id="joyVy">0.00</span></span>
+        <span>wz <span class="val" id="joyWz">0.00</span></span>
+      </div>
+      <p class="joy-hint">Select “Manual (Joystick)” and press Start. Rover stops if the stick is released.</p>
     </div>
   </div>
 </div>
@@ -420,6 +458,95 @@ $('resetPoseBtn').addEventListener('click', () => {
   poseWorldX = 0;
   poseWorldY = 0;
 });
+$('resetYawBtn').addEventListener('click', () => fetch('/control?cmd=resetYaw'));
+
+// ---- Manual drive (joystick) module ----
+// Sends {vx, vy, wz} over the WebSocket at JOY_SEND_MS while any input is active,
+// plus one zero frame on release. Firmware has a 500 ms deadman, so a dropped link
+// stops the rover even if the release frame never arrives.
+const JOY_SEND_MS = 100;
+const JOY_DEADZONE = 0.08;
+const joyCanvas = $('joyCanvas');
+const joyCtx = joyCanvas.getContext('2d');
+const joy = { vx: 0, vy: 0, wz: 0, pointerId: null, timer: null };
+
+function drawJoystick() {
+  const w = joyCanvas.width, h = joyCanvas.height, cx = w / 2, cy = h / 2;
+  const R = w / 2 - 6, r = 28;
+  joyCtx.clearRect(0, 0, w, h);
+  joyCtx.strokeStyle = 'rgba(0,0,0,.08)'; joyCtx.lineWidth = 1;
+  joyCtx.beginPath(); joyCtx.moveTo(cx, 10); joyCtx.lineTo(cx, h - 10); joyCtx.stroke();
+  joyCtx.beginPath(); joyCtx.moveTo(10, cy); joyCtx.lineTo(w - 10, cy); joyCtx.stroke();
+  joyCtx.beginPath(); joyCtx.arc(cx, cy, R - r, 0, Math.PI * 2); joyCtx.stroke();
+  // Screen: +y is down, so forward (vx+) is drawn upward.
+  const kx = cx + joy.vy * (R - r), ky = cy - joy.vx * (R - r);
+  joyCtx.fillStyle = (joy.pointerId !== null) ? '#0071e3' : 'rgba(0,113,227,.55)';
+  joyCtx.beginPath(); joyCtx.arc(kx, ky, r, 0, Math.PI * 2); joyCtx.fill();
+}
+
+function sendJoy() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ vx: +joy.vx.toFixed(2), vy: +joy.vy.toFixed(2), wz: +joy.wz.toFixed(2) }));
+  $('joyVx').textContent = joy.vx.toFixed(2);
+  $('joyVy').textContent = joy.vy.toFixed(2);
+  $('joyWz').textContent = joy.wz.toFixed(2);
+}
+
+function joyUpdateTimer() {
+  const active = joy.pointerId !== null || joy.wz !== 0;
+  if (active && !joy.timer) {
+    joy.timer = setInterval(sendJoy, JOY_SEND_MS);
+  } else if (!active && joy.timer) {
+    clearInterval(joy.timer); joy.timer = null;
+    sendJoy(); // release frame: all zeros
+  }
+  drawJoystick();
+}
+
+function joySetFromPointer(evt) {
+  const rect = joyCanvas.getBoundingClientRect();
+  const cx = rect.width / 2, cy = rect.height / 2, R = rect.width / 2 - 34;
+  let dx = (evt.clientX - rect.left - cx) / R;
+  let dy = (evt.clientY - rect.top - cy) / R;
+  const mag = Math.hypot(dx, dy);
+  if (mag > 1) { dx /= mag; dy /= mag; }
+  joy.vy = Math.abs(dx) < JOY_DEADZONE ? 0 : dx;   // right +
+  joy.vx = Math.abs(dy) < JOY_DEADZONE ? 0 : -dy;  // up = forward +
+  drawJoystick();
+}
+
+joyCanvas.addEventListener('pointerdown', (evt) => {
+  joy.pointerId = evt.pointerId;
+  joyCanvas.setPointerCapture(evt.pointerId);
+  joyCanvas.classList.add('active');
+  joySetFromPointer(evt);
+  sendJoy();
+  joyUpdateTimer();
+});
+joyCanvas.addEventListener('pointermove', (evt) => {
+  if (evt.pointerId === joy.pointerId) joySetFromPointer(evt);
+});
+function joyRelease(evt) {
+  if (evt.pointerId !== joy.pointerId) return;
+  joy.pointerId = null; joy.vx = 0; joy.vy = 0;
+  joyCanvas.classList.remove('active');
+  joyUpdateTimer();
+}
+joyCanvas.addEventListener('pointerup', joyRelease);
+joyCanvas.addEventListener('pointercancel', joyRelease);
+
+function bindRotate(id, value) {
+  const btn = $(id);
+  const press = (evt) => { evt.preventDefault(); joy.wz = value; btn.classList.add('active'); sendJoy(); joyUpdateTimer(); };
+  const release = () => { if (joy.wz === value) { joy.wz = 0; btn.classList.remove('active'); joyUpdateTimer(); } };
+  btn.addEventListener('pointerdown', press);
+  btn.addEventListener('pointerup', release);
+  btn.addEventListener('pointercancel', release);
+  btn.addEventListener('pointerleave', release);
+}
+bindRotate('rotLeftBtn', -1);  // counter-clockwise
+bindRotate('rotRightBtn', 1);  // clockwise
+drawJoystick();
 
 // ---- Telemetry dispatch ----
 function applyTelemetry(d) {

@@ -6,28 +6,53 @@ sus encoders de cuadratura para telemetría/odometría.
 Archivos: [`motors.h`](motors.h), [`motors.cpp`](motors.cpp)
 
 Índice de motor usado en **todo** el firmware (`main.cpp`, `odometry.cpp`,
-dashboard): `0` = atrás-derecha, `1` = atrás-izquierda, `2` = adelante-derecha,
-`3` = adelante-izquierda.
+dashboard), verificado físicamente el 2026-11-02: `0` = adelante-izquierda,
+`1` = adelante-derecha, `2` = atrás-izquierda, `3` = atrás-derecha. Lado
+izquierdo = {0, 2}, lado derecho = {1, 3}. (Un comentario anterior decía
+0=atrás-derecha… — estaba mal y explicaba por qué el lazo de rumbo salió con
+el signo invertido al principio.)
 
 ## API
 
 - `init()`: configura los 8 canales LEDC (2 por motor) y los encoders.
-- `setMotorSpeed(i, speed)`: aplica duty inmediatamente, `speed` en [-255,255].
+- `setWheelSpeed(i, radPerSec)` + `updateSpeedControl()`: **lazo cerrado** de
+  velocidad por rueda. Setpoint en rad/s, `+` = adelante para las 4 ruedas
+  (el signo del driver de M3 se aplica adentro vía `MOTOR_CMD_DIR`). Se recorta
+  a `±MAX_WHEEL_RAD_S` (7.2 rad/s). `updateSpeedControl()` debe llamarse cada
+  ciclo de `loop()`; corre los PIDs cada `PID_PERIOD_MS=20`. Es la API que usa
+  `main.cpp` para las trayectorias.
+- `setMotorSpeed(i, speed)`: lazo abierto, aplica duty inmediatamente, `speed`
+  en [-255,255] en "espacio de driver" (M3 invertido).
 - `setMotorSpeedRamped(i, target)` + `update()`: igual, pero sube el duty
   gradualmente (`RAMP_TIME_MS=300`) en vez de un salto instantáneo. `update()`
   debe llamarse cada ciclo de `loop()`.
-- `stopMotor(i)` / `stopAll()`: paran de inmediato (sin rampa) y resetean el
-  estado de rampa.
+- `stopMotor(i)` / `stopAll()`: paran de inmediato (sin rampa), desactivan el
+  PID de esa rueda y resetean su integrador y el estado de rampa.
 - `updateEncoderTelemetry()`: calcula RPM real por rueda y pose de odometría;
   llamarlo periódicamente (lo hace `web_server.cpp`'s `telemetryTask`).
 
-## Por qué un duty "cap" por motor (`motorMaxDuty`)
+## Lazo de velocidad (PID) y tope de PWM en 7.2 rad/s
 
-Las 4 ruedas no son del mismo motor: M1(índice 1) fue reemplazado por uno de
-140 RPM nominales (los otros 3 son de 150). `motorMaxDuty[m]` escala el 100%
-de cada motor para que todos topen en `FLEET_RPM_CAP=140` RPM parejo, en vez
-de que M1 corra más rápido que el resto al mismo comando. Ver
-[el readme de odometría](../odometry/README.md) para el duty real resultante.
+Por simulación en MATLAB, 7.2 rad/s (~69 RPM) es la velocidad máxima de rueda
+sin saturar los actuadores, es decir, **7.2 rad/s ≡ 100% de PWM** en el modelo.
+Por eso:
+
+- `MAX_WHEEL_RAD_S = 7.2` es a la vez el tope del setpoint, el tope de la
+  salida del PID y el valor que se mapea a duty 255.
+- La salida del PID está en rad/s "equivalentes" (saturada a ±7.2) y se mapea
+  linealmente a duty: `u / 7.2 * 255` → `setMotorSpeed()`. Ya **no** hay un
+  `motorMaxDuty` por motor: la diferencia entre M1 (140 RPM) y el resto la
+  absorbe su Ki más alto (4.35 vs 3). `MOTOR_RATED_RPM` queda solo como
+  referencia de datasheet (el bus real de la LiPo 1S da bastante menos).
+- La medición es `Δcuentas * ENCODER_DIR / CPR * 2π / dt` con cuentas leídas
+  directamente del ISR en cada tick de 20 ms (independiente de la ventana de
+  100 ms de `updateEncoderTelemetry()`, que sigue alimentando telemetría).
+- Ganancias y detalles del controlador: ver [pid/README.md](../pid/README.md).
+
+Lección (2026-11-02): un primer intento escalaba el duty a `69/150 ≈ 46%` máx.
+Con la LiPo 1S eso no vence la fricción estática y los motores no arrancaban
+aunque el integrador estuviera saturado. No volver a topar el duty por debajo
+del 100% sin medir primero la RPM real en vacío al voltaje real del bus.
 
 ## Encoders: por qué hay una tabla de transición y un `ENCODER_DIR`
 
