@@ -45,8 +45,26 @@ Por eso:
   absorbe su Ki más alto (4.35 vs 3). `MOTOR_RATED_RPM` queda solo como
   referencia de datasheet (el bus real de la LiPo 1S da bastante menos).
 - La medición es `Δcuentas * ENCODER_DIR / CPR * 2π / dt` con cuentas leídas
-  directamente del ISR en cada tick de 20 ms (independiente de la ventana de
-  100 ms de `updateEncoderTelemetry()`, que sigue alimentando telemetría).
+  directamente del ISR en cada tick de 20 ms, pasada por un pasa-bajas de
+  primer orden (`SPEED_FILTER_TAU_S = 0.035 s`, `filteredRadS_[]`). Esa misma
+  señal filtrada es la que ve el PID y la que se reporta como `velocityRpm`
+  en telemetría (así la gráfica del dashboard muestra exactamente lo que el
+  lazo está regulando). La odometría sigue usando la velocidad exacta por
+  cuentas en la ventana de 100 ms, sin filtro, para no arrastrar retardo en la
+  posición.
+- Por qué el filtro (2026-11-12): M3 mostraba RPM muy ruidosa en el dashboard
+  mientras M0-M2 eran estables. M3 tiene el CPR más bajo (1000), así que cada
+  cuenta espuria vale más rad/s, y con `Kd=0.005` a 20 ms el término D
+  amplifica ese ruido en la salida.
+- Lección sobre τ (mismo día): el primer valor fue 0.10 s y apareció
+  sobreimpulso en las 4 ruedas que antes no existía. El retardo del filtro
+  está *dentro* del lazo: cuando la velocidad real llega al setpoint, la
+  filtrada todavía va ~τ·(dω/dt) por debajo, y el integrador (Ki=3) sigue
+  cargando sobre ese error fantasma hasta que la señal alcanza. Con τ=0.035 s
+  (~2 ticks) el retardo es despreciable y todavía promedia el jitter de una
+  cuenta. No subir τ para "arreglar" ruido: si M3 sigue ruidoso con este
+  valor, es hardware (pull-ups externos de 10k en los pines input-only 34/35,
+  cableado del encoder).
 - Ganancias y detalles del controlador: ver [pid/README.md](../pid/README.md).
 
 Lección (2026-11-02): un primer intento escalaba el duty a `69/150 ≈ 46%` máx.

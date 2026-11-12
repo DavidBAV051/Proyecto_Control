@@ -30,15 +30,21 @@ de motores bloqueante.
 | `/` | GET | Sirve `DASHBOARD_HTML` (con `Cache-Control: no-store` para no servir una versión vieja tras reflashear). |
 | `/robot.jpg` | GET | Sirve la foto subida desde LittleFS, o 404 si no hay ninguna. |
 | `/upload` | POST (multipart) | Guarda una foto nueva en `/robot.jpg` (tope de 400 KB, `handleRobotImageUpload()`). |
-| `/control` | GET | `?cmd=start\|stop\|resetPose\|resetYaw` y/o `?trajectory=square\|circle\|forward\|manual` -> `control.cpp`/`odometry.cpp`/`imu.cpp`. GET en vez de POST a propósito: el cliente solo hace `fetch()` sin armar body. |
-| `/ws` | WebSocket | Servidor->cliente: empuje periódico de telemetría (JSON), ver `telemetry.cpp`. Cliente->servidor: frames de joystick `{"vx","vy","wz"}` en [-1,1] (~10 Hz mientras hay input + un frame en cero al soltar) -> `control_setManual()`. El firmware aplica un deadman de 500 ms (`main.cpp`), así que si se cae el enlace el rover se detiene solo. |
+| `/control` | GET | `?cmd=start\|stop\|resetPose\|resetYaw` y/o `?trajectory=forward\|backward\|right\|left` (también acepta `square\|circle`, ocultas del dashboard mientras se valida el PID) -> `control.cpp`/`odometry.cpp`/`imu.cpp`. GET en vez de POST a propósito: el cliente solo hace `fetch()` sin armar body. |
+| `/ws` | WebSocket | Servidor->cliente: empuje periódico de telemetría (JSON), ver `telemetry.cpp`. El cliente no envía datos. |
 
 ## Dashboard (`web_dashboard_html.h`)
 
-Una sola página: tarjeta de orientación/trayectoria (canvas `poseCanvas`,
-dibuja el rover y el trail real en metros que manda `telemetry.pose`),
-tarjeta de seguimiento de persona (placeholder hasta que `src/cam/` esté
-integrado), tarjeta de foto del rover, y controles de start/stop/trayectoria.
+Una sola página en dos columnas. Izquierda (ancha): gráfica de velocidad de
+rueda vs. tiempo (canvas `speedCanvas`: RPM medida en línea sólida y setpoint
+del PID en línea punteada por motor, útil para ver el escalón/sobreimpulso/
+error estacionario al revalidar las ganancias) y debajo la tarjeta de
+orientación/trayectoria (canvas `poseCanvas`, dibuja el rover y el trail real
+en metros que manda `telemetry.pose`). Derecha: tarjeta de seguimiento de
+persona (placeholder hasta que `src/cam/` esté integrado) y controles de
+start/stop/trayectoria. La tarjeta de foto del rover se quitó del dashboard
+(las rutas `/robot.jpg` y `/upload` siguen en el servidor por si se vuelve a
+agregar).
 Todo en un solo WebSocket (`applyTelemetry()` despacha cada mensaje a las
 funciones `render*` correspondientes).
 

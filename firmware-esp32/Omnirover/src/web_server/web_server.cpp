@@ -2,7 +2,6 @@
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
-#include <ArduinoJson.h>
 #include "net_config.h"
 #include "telemetry.h"
 #include "motors.h"
@@ -49,19 +48,11 @@ static void handleRobotImageUpload(AsyncWebServerRequest *request, String filena
 
 static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
                        AwsEventType type, void *arg, uint8_t *data, size_t len) {
-    (void)server;
+    (void)server; (void)arg; (void)data; (void)len;
     if (type == WS_EVT_CONNECT) {
         Serial.printf("WS client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
     } else if (type == WS_EVT_DISCONNECT) {
         Serial.printf("WS client #%u disconnected\n", client->id());
-    } else if (type == WS_EVT_DATA) {
-        // Joystick frames from the dashboard: {"vx":..,"vy":..,"wz":..}, each in [-1, 1].
-        AwsFrameInfo *info = (AwsFrameInfo *)arg;
-        if (!(info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT)) return;
-        JsonDocument doc;
-        if (deserializeJson(doc, data, len) != DeserializationError::Ok) return;
-        if (!doc["vx"].is<float>()) return;
-        control_setManual(doc["vx"].as<float>(), doc["vy"] | 0.0f, doc["wz"] | 0.0f);
     }
 }
 
@@ -141,8 +132,10 @@ void webServer_init() {
             String traj = request->getParam("trajectory")->value();
             if (traj == "circle") control_setTrajectory(TRAJ_CIRCLE);
             else if (traj == "forward") control_setTrajectory(TRAJ_FORWARD);
+            else if (traj == "backward") control_setTrajectory(TRAJ_BACKWARD);
+            else if (traj == "right") control_setTrajectory(TRAJ_RIGHT);
+            else if (traj == "left") control_setTrajectory(TRAJ_LEFT);
             else if (traj == "square") control_setTrajectory(TRAJ_SQUARE);
-            else if (traj == "manual") control_setTrajectory(TRAJ_MANUAL);
         }
         request->send(200, "text/plain", "ok");
     });

@@ -26,9 +26,14 @@ static const int8_t MOTOR_CMD_DIR[NUM_MOTORS] = {1, 1, 1, -1};
 // Per-wheel velocity PID gains (MATLAB design). M1's Ki lowered from 4.35 to match
 // the others: with Kp=0 the integrator ramp rate IS the start-up delay, so a higher
 // Ki made M1 break away well before the rest.
-static const float PID_KP[NUM_MOTORS] = {0.0f,   0.0f,   0.0f,   0.0f};
+static const float PID_KP[NUM_MOTORS] = {0.22f,   0.18f,   0.25f,   0.25f};
 static const float PID_KI[NUM_MOTORS] = {3.0f,   3.0f,   3.0f,   3.0f};
 static const float PID_KD[NUM_MOTORS] = {0.005f, 0.005f, 0.005f, 0.005f};
+// First-order low-pass on measured wheel speed (PID measurement + telemetry). Tames
+// encoder count jitter (worst on M3: lowest CPR, so each spurious count is more rad/s)
+// before the D term amplifies it. Lag sits inside the loop: 0.10 s made the integrator
+// wind past the setpoint (visible overshoot), so keep it to a couple of 20 ms ticks.
+static constexpr float SPEED_FILTER_TAU_S = 0.035f;
 
 class MotorController {
 public:
@@ -63,6 +68,7 @@ private:
 
     PID      speedPid_[NUM_MOTORS];
     float    targetRadS_[NUM_MOTORS] = {0, 0, 0, 0};
+    float    filteredRadS_[NUM_MOTORS] = {0, 0, 0, 0}; // low-passed measurement, see SPEED_FILTER_TAU_S
     bool     pidActive_[NUM_MOTORS]  = {false, false, false, false};
     long     lastPidCount_[NUM_MOTORS] = {0, 0, 0, 0};
     uint32_t lastPidMs_ = 0;

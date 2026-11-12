@@ -16,6 +16,7 @@ struct CamData {
 struct EncoderData {
     long  position    = 0; // pulse count
     float velocityRpm = 0;
+    float setpointRpm = 0; // active PID target (0 when the wheel loop is disabled)
 };
 
 // Dead-reckoned world-frame position in meters; see src/odometry/README.md.

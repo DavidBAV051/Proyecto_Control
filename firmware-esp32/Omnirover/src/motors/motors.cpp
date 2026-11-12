@@ -98,15 +98,20 @@ void MotorController::updateSpeedControl() {
     if (elapsedMs < PID_PERIOD_MS) return;
     lastPidMs_ = now;
     float dt = elapsedMs / 1000.0f;
+    float alpha = dt / (SPEED_FILTER_TAU_S + dt);
 
     for (uint8_t m = 0; m < NUM_MOTORS; m++) {
         long rawCount = encoderCount[m];
         long delta = (rawCount - lastPidCount_[m]) * ENCODER_DIR[m];
         lastPidCount_[m] = rawCount;
+
+        // Filter runs even with the loop disabled so telemetry stays smooth and the
+        // PID doesn't see a stale value when it re-engages.
+        float rawRadS = (delta / ENCODER_COUNTS_PER_REV[m]) * TWO_PI / dt;
+        filteredRadS_[m] += alpha * (rawRadS - filteredRadS_[m]);
         if (!pidActive_[m]) continue;
 
-        float measuredRadS = (delta / ENCODER_COUNTS_PER_REV[m]) * TWO_PI / dt;
-        float u = speedPid_[m].update(targetRadS_[m], measuredRadS, dt);
+        float u = speedPid_[m].update(targetRadS_[m], filteredRadS_[m], dt);
 
         // PID output is a rad/s-equivalent command; MAX_WHEEL_RAD_S = full duty.
         int16_t cmd = (int16_t)lroundf(u / MAX_WHEEL_RAD_S * 255.0f);
@@ -154,9 +159,11 @@ void MotorController::updateEncoderTelemetry() {
 
         EncoderData enc;
         enc.position    = count;
-        enc.velocityRpm = (delta / ENCODER_COUNTS_PER_REV[m]) * (60000.0f / elapsedMs);
+        enc.velocityRpm = filteredRadS_[m] * RAD_S_TO_RPM; // same filtered signal the PID sees
+        enc.setpointRpm = pidActive_[m] ? targetRadS_[m] * RAD_S_TO_RPM : 0.0f;
         telemetry_setEncoder(m, enc);
-        wheelRpm[m] = enc.velocityRpm;
+        // Odometry keeps the exact count-based speed: filter lag would smear position.
+        wheelRpm[m] = (delta / ENCODER_COUNTS_PER_REV[m]) * (60000.0f / elapsedMs);
     }
 
     odometry_update(wheelRpm, telemetry_get().imu.yaw, elapsedMs);

@@ -9,8 +9,10 @@ Archivos: [`control.h`](control.h), [`control.cpp`](control.cpp)
 ## Qué guarda
 
 - `g_running` (bool): si el rover debe estar ejecutando la trayectoria activa.
-- `g_trajectory` (`RoverTrajectory`): `TRAJ_SQUARE`, `TRAJ_CIRCLE` o `TRAJ_FORWARD`
-  (avance recto continuo, sin pasos — ver `main.cpp::loop()`).
+- `g_trajectory` (`RoverTrajectory`): `TRAJ_FORWARD` (default), `TRAJ_BACKWARD`,
+  `TRAJ_RIGHT`, `TRAJ_LEFT` (movimientos continuos, sin pasos — ver
+  `main.cpp::loop()`), más `TRAJ_SQUARE` / `TRAJ_CIRCLE` que siguen en firmware
+  pero están ocultas del dashboard mientras se valida el PID de rueda.
 
 Ambos protegidos por un mutex (`g_mutex`) porque se escriben desde el handler
 HTTP `/control` (tarea del servidor web, ver `web_server.cpp`) y se leen desde

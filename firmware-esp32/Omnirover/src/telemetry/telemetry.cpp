@@ -90,6 +90,7 @@ String telemetry_toJson() {
         JsonObject e = enc.add<JsonObject>();
         e["pos"] = snap.encoders[m].position;
         e["vel"] = snap.encoders[m].velocityRpm;
+        e["sp"]  = snap.encoders[m].setpointRpm;
     }
 
     JsonObject pose = doc["pose"].to<JsonObject>();

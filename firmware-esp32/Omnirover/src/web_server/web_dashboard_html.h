@@ -56,10 +56,25 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
     color: var(--text-secondary); font-size: .8rem;
     font-variant-numeric: tabular-nums;
   }
-  main { max-width: 1080px; margin: 0 auto; padding: 24px; }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px; }
+  /* Wide left column for the time-series/pose plots, narrow right column for status + controls. */
   .grid {
     display: grid; gap: 20px;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+    grid-template-areas:
+      "speed cam"
+      "pose  control";
+    align-items: start;
+  }
+  .card-speed   { grid-area: speed; }
+  .card-pose    { grid-area: pose; }
+  .card-cam     { grid-area: cam; }
+  .card-control { grid-area: control; }
+  @media (max-width: 760px) {
+    .grid {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: "speed" "pose" "cam" "control";
+    }
   }
   .card {
     background: var(--card-bg); border: 1px solid var(--card-border);
@@ -98,26 +113,30 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
   }
   .pose-readout span:first-child { color: var(--text-secondary); font-size: .85rem; }
 
-  /* Encoders card */
-  .enc-row {
-    display: grid; grid-template-columns: 44px 1fr 70px;
-    align-items: center; gap: 12px; margin-bottom: 10px;
+  /* Wheel speed chart card */
+  canvas#speedCanvas {
+    width: 100%; height: auto; display: block;
+    border-radius: 12px; background: #f2f2f4;
   }
-  .enc-row:last-child { margin-bottom: 0; }
-  .enc-row span:first-child { font-weight: 600; font-size: .85rem; }
-  .bar { height: 8px; background: #eef0f2; border-radius: 6px; overflow: hidden; }
-  .bar > i { display: block; height: 100%; background: var(--accent); width: 50%; transition: width .2s; }
+  .speed-legend {
+    display: flex; flex-wrap: wrap; gap: 8px 12px; margin-top: 12px;
+    font-size: .8rem; color: var(--text-secondary); font-variant-numeric: tabular-nums;
+  }
+  .speed-legend button {
+    border: none; background: #f2f2f4; color: inherit; font: inherit; cursor: pointer;
+    padding: 5px 10px; border-radius: 999px; transition: opacity .15s, background .15s;
+  }
+  .speed-legend button:hover { background: #e6e6e9; }
+  .speed-legend button.off { opacity: .4; text-decoration: line-through; }
+  .speed-legend .sw { display: inline-block; width: 12px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  .speed-legend .val { color: var(--text); margin-left: 4px; }
+  .speed-hint { font-size: .75rem; color: var(--text-secondary); margin: 8px 0 0; }
+  .speed-actions { display: flex; gap: 10px; margin-top: 10px; }
+  .speed-actions button.btn { flex: 1; border: none; font-family: inherit; background: #f2f2f4; color: var(--text-secondary); }
+  .speed-actions button.btn:hover { background: #e6e6e9; }
+  #pauseSpeedBtn.paused { background: rgba(255, 149, 0, .15); color: #c93400; }
 
-  /* Rover photo card */
-  .robot-card { display: flex; flex-direction: column; }
-  .robot-photo {
-    position: relative; width: 65%; aspect-ratio: 1 / 1;
-    background: #f2f2f4; border-radius: 12px; overflow: hidden;
-    display: flex; align-items: center; justify-content: center;
-    margin: 0 auto 14px;
-  }
-  .robot-photo img { width: 100%; height: 100%; object-fit: cover; display: none; }
-  .robot-placeholder { color: var(--text-secondary); font-size: .85rem; }
+  /* Buttons */
   .btn {
     display: inline-block; text-align: center; cursor: pointer;
     background: var(--accent-soft); color: var(--accent);
@@ -145,25 +164,6 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
     width: 100%; margin-top: 10px; background: #f2f2f4; color: var(--text-secondary);
   }
   #resetPoseBtn:hover, #resetYawBtn:hover { background: #e6e6e9; }
-
-  /* Manual drive (joystick) card */
-  .joy-wrap { display: flex; flex-direction: column; align-items: center; gap: 12px; }
-  canvas#joyCanvas {
-    width: 220px; height: 220px; border-radius: 50%; background: #f2f2f4;
-    touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab;
-  }
-  canvas#joyCanvas.active { cursor: grabbing; }
-  .joy-rot { display: flex; gap: 10px; width: 100%; }
-  .joy-rot button.btn {
-    flex: 1; border: none; font-family: inherit; font-size: 1.1rem;
-    touch-action: none; user-select: none; -webkit-user-select: none;
-  }
-  .joy-rot button.btn.active { background: var(--accent); color: #fff; }
-  .joy-readout {
-    display: flex; gap: 18px; font-size: .8rem; color: var(--text-secondary);
-    font-variant-numeric: tabular-nums;
-  }
-  .joy-hint { font-size: .78rem; color: var(--text-secondary); text-align: center; margin: 0; }
 </style>
 </head>
 <body>
@@ -178,26 +178,18 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
 
 <main>
 <div class="grid">
-  <div class="card robot-card">
-    <h2>Rover</h2>
-    <div class="robot-photo">
-      <img id="robotImg" alt="Rover photo">
-      <span class="robot-placeholder" id="robotPlaceholder">No photo yet</span>
+  <div class="card card-speed">
+    <h2>Wheel Speed (rpm) vs Time</h2>
+    <canvas id="speedCanvas" width="720" height="320"></canvas>
+    <div class="speed-legend" id="speedLegend"></div>
+    <p class="speed-hint">Solid = measured, dashed = PID setpoint. Last 20 s. Click a motor to show/hide it.</p>
+    <div class="speed-actions">
+      <button class="btn" id="pauseSpeedBtn">Pause</button>
+      <button class="btn" id="clearSpeedBtn">Clear Plot</button>
     </div>
-    <label class="btn" for="robotFile" id="robotUploadLabel">Change Photo</label>
-    <input type="file" id="robotFile" accept="image/*" hidden>
   </div>
 
-  <div class="card">
-    <h2>Rover Orientation &amp; Path</h2>
-    <canvas id="poseCanvas" width="260" height="220"></canvas>
-    <div class="pose-readout"><span>Yaw</span><span class="val" id="yawVal">--</span></div>
-    <div class="pose-readout"><span>X / Y</span><span class="val" id="posVal">--</span></div>
-    <button class="btn" id="resetPoseBtn">Reset Position</button>
-    <button class="btn" id="resetYawBtn">Reset Heading (Yaw = 0)</button>
-  </div>
-
-  <div class="card">
+  <div class="card card-cam">
     <h2>Person Tracking</h2>
     <span class="status-pill" id="camStatus"><span class="status-dot"></span><span id="camStatusText">Not Tracking</span></span>
     <canvas id="camCanvas" width="260" height="195"></canvas>
@@ -207,39 +199,26 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
     </div>
   </div>
 
-  <div class="card" style="grid-column: span 2;">
-    <h2>Encoders</h2>
-    <div id="encoders"></div>
+  <div class="card card-pose">
+    <h2>Rover Orientation &amp; Path</h2>
+    <canvas id="poseCanvas" width="720" height="360"></canvas>
+    <div class="pose-readout"><span>Yaw</span><span class="val" id="yawVal">--</span></div>
+    <div class="pose-readout"><span>X / Y</span><span class="val" id="posVal">--</span></div>
+    <button class="btn" id="resetPoseBtn">Reset Position</button>
+    <button class="btn" id="resetYawBtn">Reset Heading (Yaw = 0)</button>
   </div>
 
-  <div class="card" style="grid-column: span 1;">
+  <div class="card card-control">
     <h2>Rover Control</h2>
     <div class="control-row">
       <select id="trajectorySelect">
-        <option value="square">Square</option>
-        <option value="circle">Circle</option>
         <option value="forward">Forward</option>
-        <option value="manual">Manual (Joystick)</option>
+        <option value="backward">Backward</option>
+        <option value="right">Right (slide)</option>
+        <option value="left">Left (slide)</option>
       </select>
       <button class="btn" id="startBtn">Start</button>
       <button class="btn" id="stopBtn">Stop</button>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>Manual Drive</h2>
-    <div class="joy-wrap">
-      <canvas id="joyCanvas" width="220" height="220"></canvas>
-      <div class="joy-rot">
-        <button class="btn" id="rotLeftBtn" title="Rotate left (hold)">&#8634;</button>
-        <button class="btn" id="rotRightBtn" title="Rotate right (hold)">&#8635;</button>
-      </div>
-      <div class="joy-readout">
-        <span>vx <span class="val" id="joyVx">0.00</span></span>
-        <span>vy <span class="val" id="joyVy">0.00</span></span>
-        <span>wz <span class="val" id="joyWz">0.00</span></span>
-      </div>
-      <p class="joy-hint">Select “Manual (Joystick)” and press Start. Rover stops if the stick is released.</p>
     </div>
   </div>
 </div>
@@ -248,20 +227,115 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
 <script>
 const $ = (id) => document.getElementById(id);
 
-// ---- Encoders module ----
-for (let i = 0; i < 4; i++) {
-  const row = document.createElement('div');
-  row.className = 'enc-row';
-  row.innerHTML = `<span>M${i}</span><div class="bar"><i id="encBar${i}"></i></div><span class="val" id="encVal${i}">--</span>`;
-  $('encoders').appendChild(row);
-}
-function renderEncoders(enc) {
-  enc.forEach((e, i) => {
-    $('encVal' + i).textContent = e.vel.toFixed(0) + ' rpm';
-    const pct = Math.max(0, Math.min(100, 50 + e.vel / 2));
-    $('encBar' + i).style.width = pct + '%';
+// ---- Wheel speed chart module ----
+// Rolling time-series of measured RPM (solid) and PID setpoint (dashed) per motor,
+// for checking step response / overshoot / steady-state error of the velocity loops.
+const SPEED_WINDOW_MS = 20000;
+const SPEED_COLORS = ['#0071e3', '#ff9500', '#34c759', '#af52de'];
+const SPEED_LABELS = ['M0 FL', 'M1 FR', 'M2 BL', 'M3 BR'];
+const speedCanvas = $('speedCanvas');
+const speedCtx = speedCanvas.getContext('2d');
+let speedHist = []; // { t, vel:[4], sp:[4] }
+let speedVisible = [true, true, true, true];
+let speedPaused = false;
+
+SPEED_LABELS.forEach((lbl, i) => {
+  const item = document.createElement('button');
+  item.type = 'button';
+  item.title = 'Show/hide ' + lbl;
+  item.innerHTML = `<i class="sw" style="background:${SPEED_COLORS[i]}"></i>${lbl}<span class="val" id="spdVal${i}">--</span>`;
+  item.addEventListener('click', () => {
+    speedVisible[i] = !speedVisible[i];
+    item.classList.toggle('off', !speedVisible[i]);
+    drawSpeedChart();
   });
+  $('speedLegend').appendChild(item);
+});
+$('clearSpeedBtn').addEventListener('click', () => { speedHist = []; drawSpeedChart(); });
+$('pauseSpeedBtn').addEventListener('click', () => {
+  speedPaused = !speedPaused;
+  $('pauseSpeedBtn').textContent = speedPaused ? 'Resume' : 'Pause';
+  $('pauseSpeedBtn').classList.toggle('paused', speedPaused);
+});
+
+function pushSpeedSample(t, enc) {
+  speedHist.push({ t, vel: enc.map(e => e.vel || 0), sp: enc.map(e => e.sp || 0) });
+  const cutoff = t - SPEED_WINDOW_MS;
+  while (speedHist.length && speedHist[0].t < cutoff) speedHist.shift();
 }
+
+function drawSpeedChart() {
+  const w = speedCanvas.width, h = speedCanvas.height;
+  const padL = 40, padR = 10, padT = 10, padB = 22;
+  const pw = w - padL - padR, ph = h - padT - padB;
+  speedCtx.clearRect(0, 0, w, h);
+  speedCtx.fillStyle = '#f2f2f4';
+  speedCtx.fillRect(0, 0, w, h);
+  speedCtx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
+
+  const tEnd = speedHist.length ? speedHist[speedHist.length - 1].t : 0;
+  const tStart = tEnd - SPEED_WINDOW_MS;
+  // Symmetric Y range around 0 so forward/reverse read the same; 80 rpm floor covers the 7.2 rad/s (69 rpm) cap.
+  let maxAbs = 80;
+  speedHist.forEach(s => {
+    for (let m = 0; m < 4; m++) {
+      if (!speedVisible[m]) continue;
+      maxAbs = Math.max(maxAbs, Math.abs(s.vel[m]), Math.abs(s.sp[m]));
+    }
+  });
+  maxAbs = Math.ceil(maxAbs / 20) * 20;
+  const toX = (t) => padL + ((t - tStart) / SPEED_WINDOW_MS) * pw;
+  const toY = (v) => padT + ph / 2 - (v / maxAbs) * (ph / 2);
+
+  // Horizontal grid + Y labels
+  speedCtx.lineWidth = 1;
+  speedCtx.fillStyle = '#8a8a8e';
+  speedCtx.textAlign = 'right';
+  const yStep = niceGridStep(maxAbs * 2);
+  for (let v = -maxAbs; v <= maxAbs + 1e-6; v += yStep) {
+    const y = toY(v);
+    speedCtx.strokeStyle = Math.abs(v) < 1e-6 ? '#aeaeb2' : 'rgba(0, 0, 0, .07)';
+    speedCtx.beginPath(); speedCtx.moveTo(padL, y); speedCtx.lineTo(w - padR, y); speedCtx.stroke();
+    speedCtx.fillText(v.toFixed(0), padL - 4, y + 3);
+  }
+  // Vertical grid every 5 s + X labels (seconds ago)
+  speedCtx.textAlign = 'center';
+  for (let s = 0; s <= SPEED_WINDOW_MS; s += 5000) {
+    const x = toX(tStart + s);
+    speedCtx.strokeStyle = 'rgba(0, 0, 0, .07)';
+    speedCtx.beginPath(); speedCtx.moveTo(x, padT); speedCtx.lineTo(x, padT + ph); speedCtx.stroke();
+    speedCtx.fillText('-' + ((SPEED_WINDOW_MS - s) / 1000).toFixed(0) + 's', x, h - 6);
+  }
+
+  if (speedHist.length < 2) return;
+  const plotSeries = (key, dashed) => {
+    for (let m = 0; m < 4; m++) {
+      if (!speedVisible[m]) continue;
+      speedCtx.strokeStyle = SPEED_COLORS[m];
+      speedCtx.lineWidth = dashed ? 1.2 : 1.8;
+      speedCtx.setLineDash(dashed ? [5, 4] : []);
+      speedCtx.beginPath();
+      speedHist.forEach((s, i) => {
+        const x = toX(s.t), y = toY(s[key][m]);
+        if (i === 0) speedCtx.moveTo(x, y); else speedCtx.lineTo(x, y);
+      });
+      speedCtx.stroke();
+    }
+    speedCtx.setLineDash([]);
+  };
+  plotSeries('sp', true);
+  plotSeries('vel', false);
+}
+
+function renderSpeeds(t, enc) {
+  if (speedPaused) return; // freeze history and legend values together so they stay consistent
+  pushSpeedSample(t, enc);
+  enc.forEach((e, i) => {
+    $('spdVal' + i).textContent = (e.vel || 0).toFixed(0) + ' / ' + (e.sp || 0).toFixed(0);
+  });
+  drawSpeedChart();
+}
+drawSpeedChart();
 
 // ---- Rover pose module (orientation + dead-reckoned path) ----
 // Position (meters, world frame) now comes straight from firmware odometry
@@ -420,30 +494,6 @@ function renderCam(cam) {
   drawCamBox(cam);
 }
 
-// ---- Rover photo module ----
-const robotImg = $('robotImg');
-const robotPlaceholder = $('robotPlaceholder');
-function refreshRobotPhoto() { robotImg.src = '/robot.jpg?t=' + Date.now(); }
-robotImg.onload = () => { robotImg.style.display = 'block'; robotPlaceholder.style.display = 'none'; };
-robotImg.onerror = () => { robotImg.style.display = 'none'; robotPlaceholder.style.display = 'block'; };
-refreshRobotPhoto();
-
-$('robotFile').addEventListener('change', async (evt) => {
-  const file = evt.target.files[0];
-  evt.target.value = '';
-  if (!file) return;
-  const label = $('robotUploadLabel');
-  const original = label.textContent;
-  label.textContent = 'Uploading…';
-  try {
-    const form = new FormData();
-    form.append('file', file, file.name);
-    await fetch('/upload', { method: 'POST', body: form });
-    refreshRobotPhoto();
-  } catch (e) { /* upload failed, keep previous photo */ }
-  label.textContent = original;
-});
-
 // ---- Rover control module ----
 $('startBtn').addEventListener('click', () => fetch('/control?cmd=start'));
 $('stopBtn').addEventListener('click', () => fetch('/control?cmd=stop'));
@@ -460,100 +510,12 @@ $('resetPoseBtn').addEventListener('click', () => {
 });
 $('resetYawBtn').addEventListener('click', () => fetch('/control?cmd=resetYaw'));
 
-// ---- Manual drive (joystick) module ----
-// Sends {vx, vy, wz} over the WebSocket at JOY_SEND_MS while any input is active,
-// plus one zero frame on release. Firmware has a 500 ms deadman, so a dropped link
-// stops the rover even if the release frame never arrives.
-const JOY_SEND_MS = 100;
-const JOY_DEADZONE = 0.08;
-const joyCanvas = $('joyCanvas');
-const joyCtx = joyCanvas.getContext('2d');
-const joy = { vx: 0, vy: 0, wz: 0, pointerId: null, timer: null };
-
-function drawJoystick() {
-  const w = joyCanvas.width, h = joyCanvas.height, cx = w / 2, cy = h / 2;
-  const R = w / 2 - 6, r = 28;
-  joyCtx.clearRect(0, 0, w, h);
-  joyCtx.strokeStyle = 'rgba(0,0,0,.08)'; joyCtx.lineWidth = 1;
-  joyCtx.beginPath(); joyCtx.moveTo(cx, 10); joyCtx.lineTo(cx, h - 10); joyCtx.stroke();
-  joyCtx.beginPath(); joyCtx.moveTo(10, cy); joyCtx.lineTo(w - 10, cy); joyCtx.stroke();
-  joyCtx.beginPath(); joyCtx.arc(cx, cy, R - r, 0, Math.PI * 2); joyCtx.stroke();
-  // Screen: +y is down, so forward (vx+) is drawn upward.
-  const kx = cx + joy.vy * (R - r), ky = cy - joy.vx * (R - r);
-  joyCtx.fillStyle = (joy.pointerId !== null) ? '#0071e3' : 'rgba(0,113,227,.55)';
-  joyCtx.beginPath(); joyCtx.arc(kx, ky, r, 0, Math.PI * 2); joyCtx.fill();
-}
-
-function sendJoy() {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({ vx: +joy.vx.toFixed(2), vy: +joy.vy.toFixed(2), wz: +joy.wz.toFixed(2) }));
-  $('joyVx').textContent = joy.vx.toFixed(2);
-  $('joyVy').textContent = joy.vy.toFixed(2);
-  $('joyWz').textContent = joy.wz.toFixed(2);
-}
-
-function joyUpdateTimer() {
-  const active = joy.pointerId !== null || joy.wz !== 0;
-  if (active && !joy.timer) {
-    joy.timer = setInterval(sendJoy, JOY_SEND_MS);
-  } else if (!active && joy.timer) {
-    clearInterval(joy.timer); joy.timer = null;
-    sendJoy(); // release frame: all zeros
-  }
-  drawJoystick();
-}
-
-function joySetFromPointer(evt) {
-  const rect = joyCanvas.getBoundingClientRect();
-  const cx = rect.width / 2, cy = rect.height / 2, R = rect.width / 2 - 34;
-  let dx = (evt.clientX - rect.left - cx) / R;
-  let dy = (evt.clientY - rect.top - cy) / R;
-  const mag = Math.hypot(dx, dy);
-  if (mag > 1) { dx /= mag; dy /= mag; }
-  joy.vy = Math.abs(dx) < JOY_DEADZONE ? 0 : dx;   // right +
-  joy.vx = Math.abs(dy) < JOY_DEADZONE ? 0 : -dy;  // up = forward +
-  drawJoystick();
-}
-
-joyCanvas.addEventListener('pointerdown', (evt) => {
-  joy.pointerId = evt.pointerId;
-  joyCanvas.setPointerCapture(evt.pointerId);
-  joyCanvas.classList.add('active');
-  joySetFromPointer(evt);
-  sendJoy();
-  joyUpdateTimer();
-});
-joyCanvas.addEventListener('pointermove', (evt) => {
-  if (evt.pointerId === joy.pointerId) joySetFromPointer(evt);
-});
-function joyRelease(evt) {
-  if (evt.pointerId !== joy.pointerId) return;
-  joy.pointerId = null; joy.vx = 0; joy.vy = 0;
-  joyCanvas.classList.remove('active');
-  joyUpdateTimer();
-}
-joyCanvas.addEventListener('pointerup', joyRelease);
-joyCanvas.addEventListener('pointercancel', joyRelease);
-
-function bindRotate(id, value) {
-  const btn = $(id);
-  const press = (evt) => { evt.preventDefault(); joy.wz = value; btn.classList.add('active'); sendJoy(); joyUpdateTimer(); };
-  const release = () => { if (joy.wz === value) { joy.wz = 0; btn.classList.remove('active'); joyUpdateTimer(); } };
-  btn.addEventListener('pointerdown', press);
-  btn.addEventListener('pointerup', release);
-  btn.addEventListener('pointercancel', release);
-  btn.addEventListener('pointerleave', release);
-}
-bindRotate('rotLeftBtn', -1);  // counter-clockwise
-bindRotate('rotRightBtn', 1);  // clockwise
-drawJoystick();
-
 // ---- Telemetry dispatch ----
 function applyTelemetry(d) {
   $('uptime').textContent = 'uptime ' + (d.t / 1000).toFixed(1) + ' s';
   renderPose(d.imu, d.pose);
   renderCam(d.cam);
-  renderEncoders(d.enc);
+  renderSpeeds(d.t, d.enc);
 }
 
 let ws;

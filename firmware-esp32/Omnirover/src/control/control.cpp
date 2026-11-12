@@ -2,8 +2,7 @@
 
 static SemaphoreHandle_t g_mutex = nullptr;
 static bool g_running = false;
-static RoverTrajectory g_trajectory = TRAJ_SQUARE;
-static ManualCmd g_manual;
+static RoverTrajectory g_trajectory = TRAJ_FORWARD; // matches the dashboard's default <select> option
 
 void control_init() {
     if (!g_mutex) {
@@ -41,20 +40,4 @@ RoverTrajectory control_getTrajectory() {
     RoverTrajectory t = g_trajectory;
     xSemaphoreGive(g_mutex);
     return t;
-}
-
-void control_setManual(float vx, float vy, float wz) {
-    xSemaphoreTake(g_mutex, portMAX_DELAY);
-    g_manual.vx = constrain(vx, -1.0f, 1.0f);
-    g_manual.vy = constrain(vy, -1.0f, 1.0f);
-    g_manual.wz = constrain(wz, -1.0f, 1.0f);
-    g_manual.timestampMs = millis();
-    xSemaphoreGive(g_mutex);
-}
-
-ManualCmd control_getManual() {
-    xSemaphoreTake(g_mutex, portMAX_DELAY);
-    ManualCmd c = g_manual;
-    xSemaphoreGive(g_mutex);
-    return c;
 }

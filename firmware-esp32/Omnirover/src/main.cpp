@@ -22,11 +22,13 @@ static const float CIRCLE_INNER_RATIO   = 0.54f; // left/inner wheels {0,2} vs. 
 static const uint32_t SAFE_START_DELAY_MS = 2000; // wait before first motor command
 static const uint32_t MOVE_DURATION_MS = 1000;
 static const uint32_t STOP_PAUSE_MS = 500;
-static const uint32_t MANUAL_CMD_TIMEOUT_MS = 500; // joystick deadman: stop if no fresh command
 
 // Heading hold: PI controller on IMU yaw that trims right/left wheel setpoints so
 // straight segments stay straight despite per-wheel encoder/tire mismatch. The I term
 // removes the steady-state offset a P-only loop leaves against a constant asymmetry.
+// Disabled while re-validating the wheel PIDs: the trim skews per-wheel setpoints and
+// hides the raw step response on the dashboard. Re-enable once all 4 wheels settle together.
+static const bool  HEADING_HOLD_ENABLED = false;
 static const float HEADING_KP = 0.08f;  // rad/s of wheel differential per degree of yaw error
 static const float HEADING_KI = 0.04f;  // rad/s per degree-second
 static const float HEADING_MAX_CORR_RAD_S = 1.5f;
@@ -71,39 +73,11 @@ static float headingHoldCorrection()
 // is whatever yaw the rover had when the segment began, so any start angle works.
 static void driveStraight(float fl, float fr, float bl, float br)
 {
-    float c = headingHoldCorrection();
+    float c = HEADING_HOLD_ENABLED ? headingHoldCorrection() : 0.0f;
     motors.setWheelSpeed(0, fl - c);
     motors.setWheelSpeed(1, fr + c);
     motors.setWheelSpeed(2, bl - c);
     motors.setWheelSpeed(3, br + c);
-}
-
-// Inverse mecanum kinematics for joystick input (body frame, all normalized -1..1):
-// vx + = forward, vy + = right, wz + = clockwise. Scaled so the fastest wheel hits
-// MAX_WHEEL_RAD_S without distorting the direction.
-static void driveManual()
-{
-    ManualCmd cmd = control_getManual();
-    if (millis() - cmd.timestampMs > MANUAL_CMD_TIMEOUT_MS) {
-        motors.stopAll();
-        return;
-    }
-    float w[NUM_MOTORS] = {
-        cmd.vx + cmd.vy + cmd.wz, // FL
-        cmd.vx - cmd.vy - cmd.wz, // FR
-        cmd.vx - cmd.vy + cmd.wz, // BL
-        cmd.vx + cmd.vy - cmd.wz, // BR
-    };
-    float peak = 0.0f;
-    for (uint8_t i = 0; i < NUM_MOTORS; i++) peak = max(peak, fabsf(w[i]));
-    if (peak < 0.02f) {
-        motors.stopAll(); // centered stick: hard stop instead of letting the integrators unwind
-        return;
-    }
-    float scale = (peak > 1.0f) ? (MAX_WHEEL_RAD_S / peak) : MAX_WHEEL_RAD_S;
-    for (uint8_t i = 0; i < NUM_MOTORS; i++) {
-        motors.setWheelSpeed(i, w[i] * scale);
-    }
 }
 
 void moveCircle(float speed = DEFAULT_CIRCLE_RAD_S)
@@ -273,7 +247,7 @@ void loop()
     pollIMU();
 
     static bool wasRunning = false;
-    static RoverTrajectory lastTrajectory = TRAJ_SQUARE;
+    static RoverTrajectory lastTrajectory = TRAJ_FORWARD;
     bool running = control_isRunning();
     RoverTrajectory trajectory = control_getTrajectory();
 
@@ -290,8 +264,12 @@ void loop()
             runSquareTrajectory();
         } else if (trajectory == TRAJ_FORWARD) {
             moveForward(); // continuous straight-line drive, no steps to advance
-        } else if (trajectory == TRAJ_MANUAL) {
-            driveManual(); // joystick from the dashboard, deadman-protected
+        } else if (trajectory == TRAJ_BACKWARD) {
+            moveBackward();
+        } else if (trajectory == TRAJ_RIGHT) {
+            slideRight();
+        } else if (trajectory == TRAJ_LEFT) {
+            slideLeft();
         } else {
             moveCircle(); // continuous arc, no discrete steps to advance
         }

@@ -11,7 +11,7 @@ Archivos: [`telemetry.h`](telemetry.h), [`telemetry.cpp`](telemetry.cpp)
 
 - `imu` (`IMU_Data`, ver `src/imu/`)
 - `cam` (`CamData`, placeholder simulado hasta que `src/cam/` esté integrado)
-- `encoders[4]` (`EncoderData`: posición en pulsos + RPM, ver `src/motors/`)
+- `encoders[4]` (`EncoderData`: posición en pulsos + RPM medida + RPM setpoint del PID, ver `src/motors/`)
 - `pose` (`PoseData`: x/y en metros, ver `src/odometry/`)
 
 Todo protegido por un único mutex (`g_mutex`); `telemetry_get()` devuelve una
@@ -34,5 +34,5 @@ que mantener el lock mientras la usa.
 ## Formato JSON (ver `telemetry_toJson()`)
 
 ```json
-{ "t": 12345, "imu": {...}, "cam": {...}, "enc": [{"pos":.., "vel":..}, ...], "pose": {"x":.., "y":..} }
+{ "t": 12345, "imu": {...}, "cam": {...}, "enc": [{"pos":.., "vel":.., "sp":..}, ...], "pose": {"x":.., "y":..} }
 ```
