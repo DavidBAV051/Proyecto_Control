@@ -60,10 +60,10 @@ static void initEncoders() {
 
 MotorController::MotorController()
     : speedPid_{
-        PID(PID_KP[0], PID_KI[0], PID_KD[0], -MAX_WHEEL_RAD_S, MAX_WHEEL_RAD_S),
-        PID(PID_KP[1], PID_KI[1], PID_KD[1], -MAX_WHEEL_RAD_S, MAX_WHEEL_RAD_S),
-        PID(PID_KP[2], PID_KI[2], PID_KD[2], -MAX_WHEEL_RAD_S, MAX_WHEEL_RAD_S),
-        PID(PID_KP[3], PID_KI[3], PID_KD[3], -MAX_WHEEL_RAD_S, MAX_WHEEL_RAD_S)} {}
+        PID(PID_KP[0], PID_KI[0], PID_KD[0], -PID_OUTPUT_FULL_RAD_S, PID_OUTPUT_FULL_RAD_S),
+        PID(PID_KP[1], PID_KI[1], PID_KD[1], -PID_OUTPUT_FULL_RAD_S, PID_OUTPUT_FULL_RAD_S),
+        PID(PID_KP[2], PID_KI[2], PID_KD[2], -PID_OUTPUT_FULL_RAD_S, PID_OUTPUT_FULL_RAD_S),
+        PID(PID_KP[3], PID_KI[3], PID_KD[3], -PID_OUTPUT_FULL_RAD_S, PID_OUTPUT_FULL_RAD_S)} {}
 
 void MotorController::init() {
     for (uint8_t m = 0; m < NUM_MOTORS; m++) {
@@ -113,8 +113,8 @@ void MotorController::updateSpeedControl() {
 
         float u = speedPid_[m].update(targetRadS_[m], filteredRadS_[m], dt);
 
-        // PID output is a rad/s-equivalent command; MAX_WHEEL_RAD_S = full duty.
-        int16_t cmd = (int16_t)lroundf(u / MAX_WHEEL_RAD_S * 255.0f);
+        // PID output is a rad/s-equivalent command; PID_OUTPUT_FULL_RAD_S = full duty.
+        int16_t cmd = (int16_t)lroundf(u / PID_OUTPUT_FULL_RAD_S * 255.0f);
         setMotorSpeed(m, cmd * MOTOR_CMD_DIR[m]);
     }
 }

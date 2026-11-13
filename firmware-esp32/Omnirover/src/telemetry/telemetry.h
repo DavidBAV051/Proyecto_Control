@@ -2,8 +2,7 @@
 #include <Arduino.h>
 #include "imu.h"
 
-// Latest HuskyLens detection; decoupled from HUSKYLENSResult so telemetry.h
-// doesn't need the HuskyLens library. See README.md.
+// Latest person detection from the Raspberry Pi vision link (src/cam). See README.md.
 struct CamData {
     bool    valid  = false;
     int16_t id     = 0;

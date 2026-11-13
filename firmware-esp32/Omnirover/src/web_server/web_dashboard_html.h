@@ -182,7 +182,7 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
     <h2>Wheel Speed (rpm) vs Time</h2>
     <canvas id="speedCanvas" width="720" height="320"></canvas>
     <div class="speed-legend" id="speedLegend"></div>
-    <p class="speed-hint">Solid = measured, dashed = PID setpoint. Last 20 s. Click a motor to show/hide it.</p>
+    <p class="speed-hint">Solid = measured rpm, dashed = PID setpoint. Legend: rpm / setpoint. Last 20 s. Click a motor to show/hide it.</p>
     <div class="speed-actions">
       <button class="btn" id="pauseSpeedBtn">Pause</button>
       <button class="btn" id="clearSpeedBtn">Clear Plot</button>
@@ -275,8 +275,8 @@ function drawSpeedChart() {
 
   const tEnd = speedHist.length ? speedHist[speedHist.length - 1].t : 0;
   const tStart = tEnd - SPEED_WINDOW_MS;
-  // Symmetric Y range around 0 so forward/reverse read the same; 80 rpm floor covers the 7.2 rad/s (69 rpm) cap.
-  let maxAbs = 80;
+  // Symmetric Y range around 0 so forward/reverse read the same; 100 rpm floor covers the 80 rpm cap.
+  let maxAbs = 100;
   speedHist.forEach(s => {
     for (let m = 0; m < 4; m++) {
       if (!speedVisible[m]) continue;

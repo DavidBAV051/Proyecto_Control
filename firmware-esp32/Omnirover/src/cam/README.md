@@ -1,31 +1,40 @@
-# Cámara (HuskyLens)
+# Cámara (Raspberry Pi 4 por UART)
 
-Interfaz mínima para un sensor HuskyLens (reconocimiento de objetos/personas
-por UART) conectado al UART2 del ESP32.
+Enlace serie con una Raspberry Pi 4 que corre la visión por computadora
+(seguimiento de persona) y manda las detecciones al ESP32 por UART2.
+Reemplaza al HuskyLens (librería y código retirados el 2026-11-12).
 
 Archivos: [`cam.h`](cam.h), [`cam.cpp`](cam.cpp)
 
-## Estado actual: NO está integrado
+## Cableado
 
-- `initHuskyLens()` / `updateHuskyLens()` existen pero **no se llaman desde
-  `main.cpp`** (están comentadas) ni alimentan `telemetry.h` — el dashboard
-  muestra datos de cámara simulados (`telemetry_simulateCam()` en
-  `telemetry.cpp`), no detecciones reales.
-- `initHuskyLens()` bloquea en un `while` hasta que el sensor responda — no
-  debe llamarse hasta que el HuskyLens esté físicamente conectado, o el
-  `setup()` se quedará colgado ahí para siempre.
-- `updateHuskyLens()` solo imprime por Serial (`ID`, `X`, `Y`, `Width`,
-  `Height`) y tiene un `delay(100)` bloqueante — si se usa debe adaptarse a
-  no bloquear `loop()` (ver la nota de "loop() must always yield" en la
-  memoria del repo) y a llamar `telemetry_setCam()` con los datos reales.
+| Pi 4 | ESP32 | Nota |
+|---|---|---|
+| GPIO14 (TXD) | GPIO16 (RX2) | `PI_UART_RX_PIN` en `include/pins.h` |
+| GPIO15 (RXD) | GPIO17 (TX2) | `PI_UART_TX_PIN` |
+| GND | GND | común en el punto estrella de la alimentación |
 
-## Para integrarlo
+Ambos lados son lógica de 3.3 V: sin level shifter. Baud `PI_UART_BAUD`
+(115200). En la Pi usar el PL011 (`dtoverlay=disable-bt` → `/dev/ttyAMA0`),
+no el mini-UART: su baud deriva con el reloj del CPU y una Pi haciendo CV
+está throttleando todo el tiempo.
 
-1. Llamar `initHuskyLens()` en `setup()` (después de que el hardware esté
-   conectado) en vez de dejarlo comentado.
-2. Reemplazar los `Serial.print` de `updateHuskyLens()` por
-   `telemetry_setCam({...})` con los campos de `CamData` (`telemetry.h`).
-3. Quitar `telemetry_simulateCam()` de `web_server.cpp` una vez esto esté
-   feeding datos reales.
+## Estado actual: eco crudo por USB
 
-Pines UART2 (RX2/TX2) están centralizados en `include/pins.h`.
+- `cam_init()` abre UART2; `cam_poll()` (llamado cada `loop()`) drena el
+  puerto sin bloquear, junta bytes hasta `\n`/`\r` y escribe cada línea
+  completa tal cual en el monitor serie USB. Líneas de más de 128 bytes sin
+  terminador se descartan.
+- **El monitor USB está reservado para este eco**: todos los demás
+  `Serial.print` del firmware (IMU, reset reason, WiFi, WS, safe-start) se
+  quitaron para que lo único que aparezca sea lo que manda la Pi. Si el
+  BNO08x no responde en `setup()` el firmware se queda en un `while(1)`
+  silencioso.
+- Todavía no se parsea nada: el dashboard sigue mostrando
+  `telemetry_simulateCam()`.
+
+## Siguiente paso
+
+Definir el formato de línea con la Pi (p. ej. `T,x,y,w,h` / `N`) y en
+`cam_poll()` convertirlo a `CamData` (`telemetry.h`) → `telemetry_setCam()`,
+quitando `telemetry_simulateCam()` de `web_server.cpp`.

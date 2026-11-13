@@ -29,7 +29,7 @@ que mantener el lock mientras la usa.
 - `telemetry_toJson()`: serializa el snapshot a un JSON compacto
   (`ArduinoJson`) que el dashboard consume por WebSocket.
 - `telemetry_simulateCam()`: genera una detección falsa (seno/coseno) porque
-  el HuskyLens (`src/cam/`) todavía no está cableado — quitar cuando lo esté.
+  el enlace UART con la Raspberry Pi (`src/cam/`) todavía no se parsea — quitar cuando lo esté.
 
 ## Formato JSON (ver `telemetry_toJson()`)
 

@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <esp_system.h>
 #include "cam.h"
 #include "imu.h"
 #include "motors.h"
@@ -15,7 +14,7 @@
 //   0 = front left, 1 = front right, 2 = back left, 3 = back right
 // Left side = {0, 2}, right side = {1, 3}.
 
-static const float DEFAULT_DRIVE_RAD_S  = MAX_WHEEL_RAD_S; // 7.2 rad/s (~69 rpm)
+static const float DEFAULT_DRIVE_RAD_S  = MAX_WHEEL_RAD_S; // 80 rpm (~8.38 rad/s)
 static const float DEFAULT_SLIDE_RAD_S  = MAX_WHEEL_RAD_S;
 static const float DEFAULT_CIRCLE_RAD_S = MAX_WHEEL_RAD_S;
 static const float CIRCLE_INNER_RATIO   = 0.54f; // left/inner wheels {0,2} vs. right/outer -> arcs left
@@ -180,70 +179,49 @@ void runSquareTrajectory()
     SQUARE_TRAJECTORY[squareStepIndex].action();
 }
 
-// Reads + broadcasts IMU data and throttles the serial print to ~5Hz; call this
-// every loop() iteration so the dashboard/serial output never goes stale.
-static uint32_t lastImuPrintMs = 0;
+// Reads + broadcasts IMU data; call this every loop() iteration so the dashboard never goes stale.
 void pollIMU()
 {
     update_IMU();
     telemetry_setIMU(get_IMU_Data());
-    if (millis() - lastImuPrintMs >= 200) {
-        lastImuPrintMs = millis();
-        print_IMU_Data();
-    }
 }
 
 // Blocks until the safe-start window has elapsed since boot.
 void waitForSafeStart(uint32_t delayMs = SAFE_START_DELAY_MS)
 {
     motors.stopAll();
-    Serial.print("Safe start: waiting ");
-    Serial.print(delayMs);
-    Serial.println(" ms before enabling motors...");
     uint32_t start = millis();
     while (millis() - start < delayMs) {
         delay(50);
     }
-    Serial.println("Safe start complete. Motors enabled.");
 }
 
 void setup()
 {
+    // USB serial is reserved for echoing the Raspberry Pi UART stream (cam_poll()).
     Serial.begin(115200);
-
-    // A BROWNOUT here right after a "lost signal" episode means the shared LiPo
-    // sagged under motor load and reset the ESP32 (the WiFi AP drops with it).
-    esp_reset_reason_t rr = esp_reset_reason();
-    const char *rrName =
-        rr == ESP_RST_BROWNOUT ? "BROWNOUT" :
-        rr == ESP_RST_TASK_WDT ? "TASK_WDT" :
-        rr == ESP_RST_PANIC    ? "PANIC" :
-        rr == ESP_RST_POWERON  ? "POWERON" :
-        rr == ESP_RST_SW       ? "SW" : "OTHER";
-    Serial.printf("Reset reason: %s (%d)\n", rrName, (int)rr);
 
     // Real-time dashboard (WiFi AP + web server, or ESP-NOW bridge depending
     // on ROVER_LINK_MODE in include/net_config.h). Cam telemetry is still
-    // placeholder data until HuskyLens is wired in; IMU and encoders are live.
+    // placeholder data until the Pi stream is parsed; IMU and encoders are live.
     webServer_init();
     espNow_init();
 
-    // initHuskyLens();
-    if (init_IMU()) {
-        Serial.println("BNO08x online.");
-    } else {
-        Serial.println("Error: BNO08x not detected.");
+    cam_init();
+    if (!init_IMU()) {
+        Serial.println("[boot] BNO08x not detected - halted, Pi UART will not be read");
         while (1) { delay(1000); }
     }
     motors.init();
     motors.stopAll();
-    Serial.println("DRV8871 Motor Controller Ready.");
 
     waitForSafeStart();
+    Serial.println("[boot] ready - echoing Pi UART (GPIO16 RX @115200)");
 }
 
 void loop()
 {
+    cam_poll();
     pollIMU();
 
     static bool wasRunning = false;
@@ -258,6 +236,7 @@ void loop()
         }
     } else {
         if (!wasRunning || trajectory != lastTrajectory) {
+            stopAllMotors();         // reset wheel PIDs before a new segment type
             resetSquareTrajectory(); // fresh start when (re)starting or switching trajectory
         }
         if (trajectory == TRAJ_SQUARE) {

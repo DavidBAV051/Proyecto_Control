@@ -52,14 +52,12 @@ void espNow_init() {
     WiFi.mode(WIFI_STA); // required by ESP-NOW even without an AP/router
 
     if (esp_now_init() != ESP_OK) {
-        Serial.println("ESP-NOW init failed");
         return;
     }
 
 #if ROVER_LINK_MODE == LINK_MODE_ESPNOW_BASE
     telemetry_init();
     esp_now_register_recv_cb(onDataRecv);
-    Serial.println("ESP-NOW base station: waiting for rover telemetry...");
 #else
     esp_now_peer_info_t peer = {};
     memcpy(peer.peer_addr, ESPNOW_PEER_MAC, 6);
@@ -69,7 +67,6 @@ void espNow_init() {
         esp_now_add_peer(&peer);
     }
     xTaskCreatePinnedToCore(espNowSendTask, "espnow_tx", 4096, nullptr, 1, nullptr, 0);
-    Serial.println("ESP-NOW rover link: streaming telemetry to base station");
 #endif
 }
 

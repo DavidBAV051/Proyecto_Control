@@ -18,7 +18,7 @@ el signo invertido al principio.)
 - `setWheelSpeed(i, radPerSec)` + `updateSpeedControl()`: **lazo cerrado** de
   velocidad por rueda. Setpoint en rad/s, `+` = adelante para las 4 ruedas
   (el signo del driver de M3 se aplica adentro vía `MOTOR_CMD_DIR`). Se recorta
-  a `±MAX_WHEEL_RAD_S` (7.2 rad/s). `updateSpeedControl()` debe llamarse cada
+  a `±MAX_WHEEL_RAD_S` (80 rpm ≈ 8.38 rad/s). `updateSpeedControl()` debe llamarse cada
   ciclo de `loop()`; corre los PIDs cada `PID_PERIOD_MS=20`. Es la API que usa
   `main.cpp` para las trayectorias.
 - `setMotorSpeed(i, speed)`: lazo abierto, aplica duty inmediatamente, `speed`
@@ -31,19 +31,28 @@ el signo invertido al principio.)
 - `updateEncoderTelemetry()`: calcula RPM real por rueda y pose de odometría;
   llamarlo periódicamente (lo hace `web_server.cpp`'s `telemetryTask`).
 
-## Lazo de velocidad (PID) y tope de PWM en 7.2 rad/s
+## Lazo de velocidad (PID): tope de setpoint 80 rpm, escala de salida 7.2 rad/s
 
-Por simulación en MATLAB, 7.2 rad/s (~69 RPM) es la velocidad máxima de rueda
-sin saturar los actuadores, es decir, **7.2 rad/s ≡ 100% de PWM** en el modelo.
-Por eso:
+Son dos constantes distintas a propósito:
 
-- `MAX_WHEEL_RAD_S = 7.2` es a la vez el tope del setpoint, el tope de la
-  salida del PID y el valor que se mapea a duty 255.
-- La salida del PID está en rad/s "equivalentes" (saturada a ±7.2) y se mapea
-  linealmente a duty: `u / 7.2 * 255` → `setMotorSpeed()`. Ya **no** hay un
-  `motorMaxDuty` por motor: la diferencia entre M1 (140 RPM) y el resto la
-  absorbe su Ki más alto (4.35 vs 3). `MOTOR_RATED_RPM` queda solo como
-  referencia de datasheet (el bus real de la LiPo 1S da bastante menos).
+- `PID_OUTPUT_FULL_RAD_S = 7.2`: escala de la salida del controlador. La
+  salida del PID está en rad/s "equivalentes" (saturada a ±7.2) y se mapea
+  linealmente a duty: `u / 7.2 * 255` → `setMotorSpeed()`. Es el valor del
+  modelo MATLAB ("7.2 rad/s ≡ 100 % de PWM") y se deja fijo para que
+  `PID_KP/KI/KD` sigan siendo válidas: cambiar esta constante cambia la
+  ganancia del lazo.
+- `MAX_WHEEL_RPM = 80` (`MAX_WHEEL_RAD_S ≈ 8.38`): tope del setpoint
+  (`setWheelSpeed()`) y velocidad por defecto de `main.cpp`. Calibración en
+  piso 2026-11-12 (con telemetría de duty, ya retirada): a 68.75 rpm
+  (7.2 rad/s) M0/M2/M3 usaban ~72 % de duty y M1 (140 rpm nominales,
+  2046 CPR) ~77 %. Escalando linealmente, 80 rpm deja a M1 en ~90 % y al
+  resto en ~84 %, con ~10 % de autoridad para el lazo y la caída de la LiPo.
+  Es el techo honesto con este hardware: 85 rpm ya pondría a M1 en ~95 % y
+  saturaría conforme se descarga la batería (M1 es el cuello de botella; si
+  se necesita más velocidad, cambiar M1 por un motor de 150 rpm como los
+  otros). No subir sin volver a medir duty.
+- Ya **no** hay un `motorMaxDuty` por motor. `MOTOR_RATED_RPM` queda solo
+  como referencia de datasheet (el bus real de la LiPo 1S da bastante menos).
 - La medición es `Δcuentas * ENCODER_DIR / CPR * 2π / dt` con cuentas leídas
   directamente del ISR en cada tick de 20 ms, pasada por un pasa-bajas de
   primer orden (`SPEED_FILTER_TAU_S = 0.035 s`, `filteredRadS_[]`). Esa misma
@@ -71,6 +80,12 @@ Lección (2026-11-02): un primer intento escalaba el duty a `69/150 ≈ 46%` má
 Con la LiPo 1S eso no vence la fricción estática y los motores no arrancaban
 aunque el integrador estuviera saturado. No volver a topar el duty por debajo
 del 100% sin medir primero la RPM real en vacío al voltaje real del bus.
+
+Si hace falta recalibrar el tope (batería distinta, llantas nuevas): la forma
+más rápida es volver a exponer temporalmente el último duty escrito por
+`setMotorSpeed()` en `EncoderData` y leerlo en el dashboard con el rover en
+piso a la velocidad por defecto; el setpoint válido es el que deja a la rueda
+más cargada en ~85-90 %.
 
 ## Encoders: por qué hay una tabla de transición y un `ENCODER_DIR`
 

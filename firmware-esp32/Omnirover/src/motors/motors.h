@@ -7,9 +7,18 @@
 
 #define NUM_MOTORS 4
 
-// Max wheel speed without saturating the actuators (MATLAB); maps to 100% PWM.
-static constexpr float MAX_WHEEL_RAD_S = 7.2f;
 static constexpr float RAD_S_TO_RPM = 60.0f / (2.0f * (float)PI);
+
+// Wheel setpoint cap. Measured 2026-11-12 on the floor: at 68.75 rpm (7.2 rad/s) the
+// slowest wheel (M1, 140 rpm nominal) needed 77% duty, the rest ~72%. 80 rpm puts M1 at
+// ~90% / others ~84%, leaving ~10% authority for the loop plus battery sag. Do not raise
+// without re-measuring duty; 85 rpm already pushes M1 to ~95% and it saturates as the
+// LiPo discharges.
+static constexpr float MAX_WHEEL_RPM   = 75.0f;
+static constexpr float MAX_WHEEL_RAD_S = MAX_WHEEL_RPM / RAD_S_TO_RPM; // ~8.38 rad/s
+// Controller output scale: this many "rad/s-equivalent" = 100% duty. Kept at the
+// MATLAB value so PID_KP/KI/KD stay valid; raising the setpoint cap must not retune the loop.
+static constexpr float PID_OUTPUT_FULL_RAD_S = 7.2f;
 
 // Datasheet free-run RPM at rated voltage (reference only; real bus voltage is lower).
 static const uint16_t MOTOR_RATED_RPM[NUM_MOTORS] = {150, 140, 150, 150};

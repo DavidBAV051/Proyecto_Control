@@ -37,23 +37,13 @@ static void handleRobotImageUpload(AsyncWebServerRequest *request, String filena
 
     if (final) {
         if (uploadFile) uploadFile.close();
-        if (tooLarge) {
-            LittleFS.remove(ROBOT_IMAGE_PATH);
-            Serial.println("Robot photo upload rejected: file too large");
-        } else {
-            Serial.printf("Robot photo upload saved: %u bytes\n", (unsigned)(index + len));
-        }
+        if (tooLarge) LittleFS.remove(ROBOT_IMAGE_PATH);
     }
 }
 
 static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
                        AwsEventType type, void *arg, uint8_t *data, size_t len) {
-    (void)server; (void)arg; (void)data; (void)len;
-    if (type == WS_EVT_CONNECT) {
-        Serial.printf("WS client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
-    } else if (type == WS_EVT_DISCONNECT) {
-        Serial.printf("WS client #%u disconnected\n", client->id());
-    }
+    (void)server; (void)client; (void)type; (void)arg; (void)data; (void)len;
 }
 
 // Runs independently of loop() so the dashboard stays live during blocking
@@ -62,7 +52,7 @@ static void telemetryTask(void *param) {
     (void)param;
     for (;;) {
 #if ROVER_LINK_MODE != LINK_MODE_ESPNOW_BASE
-        telemetry_simulateCam(); // TODO: drop once HuskyLens is wired in
+        telemetry_simulateCam(); // TODO: drop once the Pi UART stream is parsed into CamData
         motors.updateEncoderTelemetry(); // real encoder reads, not a placeholder
 #endif
         // Skip the frame if a client's TX queue is still backed up: on a weak link,
@@ -79,18 +69,12 @@ void webServer_init() {
     telemetry_init();
     control_init();
 
-    if (!LittleFS.begin(true)) {
-        Serial.println("LittleFS mount failed, rover photo upload unavailable");
-    }
+    LittleFS.begin(true); // rover photo storage; upload is simply unavailable if this fails
 
     WiFi.mode(WIFI_AP);
     WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD, WIFI_AP_CHANNEL);
     WiFi.setTxPower(WIFI_AP_TX_POWER);
     WiFi.setSleep(false);
-    Serial.print("Dashboard AP SSID: ");
-    Serial.println(WIFI_AP_SSID);
-    Serial.print("Dashboard AP IP: ");
-    Serial.println(WiFi.softAPIP());
 
     ws.onEvent(onWsEvent);
     server.addHandler(&ws);

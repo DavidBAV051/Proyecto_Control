@@ -1,52 +1,45 @@
-#include <Arduino.h>
-#include "HUSKYLENS.h"
+#include "cam.h"
 #include "pins.h"
 
-HUSKYLENS huskylens;
-HardwareSerial HuskySerial(2);
+static HardwareSerial piSerial(2);
+static String lineBuf;
+static bool discardingLine = false; // oversized line: skip to the next terminator
+static uint32_t lastByteMs = 0;
+static const size_t PI_LINE_MAX = 512; // Pi sends ~200-300 byte JSON lines
+static const uint32_t PARTIAL_FLUSH_MS = 200; // echo unterminated data so a missing '\n' isn't mistaken for silence
 
-void initHuskyLens()
+void cam_init()
 {
-    HuskySerial.begin(9600, SERIAL_8N1, HUSKYLENS_RX2_PIN, HUSKYLENS_TX2_PIN);
-
-    while (!huskylens.begin(HuskySerial))
-    {
-        Serial.println("HuskyLens not connected!");
-        delay(1000);
-    }
-
-    Serial.println("HuskyLens connected");
+    piSerial.setRxBufferSize(1024); // must precede begin(); 10 Hz x ~300 B JSON would overrun the 256 B default
+    piSerial.begin(PI_UART_BAUD, SERIAL_8N1, PI_UART_RX_PIN, PI_UART_TX_PIN);
+    lineBuf.reserve(PI_LINE_MAX);
 }
 
-void updateHuskyLens()
+void cam_poll()
 {
-    if (!huskylens.request())
-    {
-        Serial.println("Request failed");
+    while (piSerial.available() > 0) {
+        char c = (char)piSerial.read();
+        lastByteMs = millis();
+        if (c == '\n' || c == '\r') {
+            if (discardingLine) {
+                Serial.println("[overflow] line > 512 bytes dropped");
+                discardingLine = false;
+            } else if (lineBuf.length() > 0) {
+                Serial.println(lineBuf);
+            }
+            lineBuf = "";
+        } else if (discardingLine) {
+            continue;
+        } else if (lineBuf.length() < PI_LINE_MAX) {
+            lineBuf += c;
+        } else {
+            lineBuf = "";
+            discardingLine = true;
+        }
     }
-    else if (!huskylens.available())
-    {
-        Serial.println("No object");
+    if (lineBuf.length() > 0 && millis() - lastByteMs > PARTIAL_FLUSH_MS) {
+        Serial.print("[partial] ");
+        Serial.println(lineBuf);
+        lineBuf = "";
     }
-    else
-    {
-        HUSKYLENSResult result = huskylens.read();
-
-        Serial.print("ID=");
-        Serial.print(result.ID);
-
-        Serial.print(" X=");
-        Serial.print(result.xCenter);
-
-        Serial.print(" Y=");
-        Serial.println(result.yCenter);
-
-        Serial.print("Width=");
-        Serial.print(result.width);
-
-        Serial.print(" Height=");
-        Serial.println(result.height);
-    }
-
-    delay(100);
 }

@@ -11,7 +11,7 @@
 //
 // Budget:
 //   Motors (4x IN1/IN2 + encoder A/B)........ 16 pins
-//   HuskyLens UART2 (RX2/TX2)................. 2 pins
+//   Raspberry Pi UART2 (RX2/TX2).............. 2 pins
 //   Shared I2C bus (BNO08x IMU)................ 2 pins
 //   ------------------------------------------------
 //   Total...................................... 20 pins
@@ -42,10 +42,11 @@
 #define M4_ENC_A_PIN 4
 #define M4_ENC_B_PIN 5
 
-// ---- HuskyLens (UART2) ----
-// Kept on the ESP32's default UART2 pins; do not reuse for encoders/GPIO.
-#define HUSKYLENS_RX2_PIN 16
-#define HUSKYLENS_TX2_PIN 17
+// ---- Raspberry Pi 4 vision link (UART2) ----
+// Pi GPIO14 (TXD) -> ESP32 RX2, Pi GPIO15 (RXD) <- ESP32 TX2, common GND. Both 3.3 V.
+#define PI_UART_RX_PIN 16
+#define PI_UART_TX_PIN 17
+#define PI_UART_BAUD   115200
 
 // ---- Shared I2C bus: GY-BNO08X IMU ----
 // This breakout has no CS pin (not exposed). Wiring for I2C mode (no extra GPIOs needed):
