@@ -6,6 +6,7 @@
 #include "telemetry.h"
 #include "motors.h"
 #include "control.h"
+#include "espnow_link.h"
 #include "odometry.h"
 #include "imu.h"
 #include "web_dashboard_html.h"
@@ -51,10 +52,6 @@ static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
 static void telemetryTask(void *param) {
     (void)param;
     for (;;) {
-#if ROVER_LINK_MODE != LINK_MODE_ESPNOW_BASE
-        telemetry_simulateCam(); // TODO: drop once the Pi UART stream is parsed into CamData
-        motors.updateEncoderTelemetry(); // real encoder reads, not a placeholder
-#endif
         // Skip the frame if a client's TX queue is still backed up: on a weak link,
         // queuing more only grows the backlog and the GUI shows ever-staler data.
         if (ws.count() > 0 && ws.availableForWriteAll()) {
@@ -99,27 +96,40 @@ void webServer_init() {
         [](AsyncWebServerRequest *request) { request->send(200, "text/plain", "ok"); },
         handleRobotImageUpload);
 
-    // Dashboard Start/Stop + trajectory selector; see README.md for the routes table.
     server.on("/control", HTTP_GET, [](AsyncWebServerRequest *request) {
+        RoverOperationMode mode = OPERATION_MODE_CAMERA;
+        RoverLandmark landmark = LANDMARK_NONE;
+
+        if (request->hasParam("mode")) {
+            String modeName = request->getParam("mode")->value();
+            mode = modeName == "LANDMARK" ? OPERATION_MODE_LANDMARK : OPERATION_MODE_CAMERA;
+            if (request->hasParam("landmark")) {
+                String landmarkName = request->getParam("landmark")->value();
+                if (landmarkName == "TOP_RIGHT") landmark = LANDMARK_TOP_RIGHT;
+                else if (landmarkName == "TOP_LEFT") landmark = LANDMARK_TOP_LEFT;
+                else if (landmarkName == "DOWN_RIGHT") landmark = LANDMARK_DOWN_RIGHT;
+                else if (landmarkName == "DOWN_LEFT") landmark = LANDMARK_DOWN_LEFT;
+                else if (landmarkName == "CENTER") landmark = LANDMARK_CENTER;
+            }
+            control_selectMode(mode, landmark);
+            espNow_sendControl(ESPNOW_CONTROL_MODE, mode, landmark);
+        }
+
         if (request->hasParam("cmd")) {
             String cmd = request->getParam("cmd")->value();
-            if (cmd == "start") control_start();
-            else if (cmd == "stop") control_stop();
-            else if (cmd == "resetPose") {
+            if (cmd == "start") {
+                control_start();
+                espNow_sendControl(ESPNOW_CONTROL_START);
+            } else if (cmd == "idle" || cmd == "stop") {
+                control_idle();
+                espNow_sendControl(ESPNOW_CONTROL_IDLE);
+            } else if (cmd == "resetPose") {
                 odometry_reset();
                 OdometryPose pose = odometry_getPose();
                 telemetry_setPose(pose.x, pose.y);
+            } else if (cmd == "resetYaw") {
+                imu_zeroYaw();
             }
-            else if (cmd == "resetYaw") imu_zeroYaw();
-        }
-        if (request->hasParam("trajectory")) {
-            String traj = request->getParam("trajectory")->value();
-            if (traj == "circle") control_setTrajectory(TRAJ_CIRCLE);
-            else if (traj == "forward") control_setTrajectory(TRAJ_FORWARD);
-            else if (traj == "backward") control_setTrajectory(TRAJ_BACKWARD);
-            else if (traj == "right") control_setTrajectory(TRAJ_RIGHT);
-            else if (traj == "left") control_setTrajectory(TRAJ_LEFT);
-            else if (traj == "square") control_setTrajectory(TRAJ_SQUARE);
         }
         request->send(200, "text/plain", "ok");
     });

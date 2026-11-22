@@ -1,23 +1,31 @@
 #pragma once
 #include <Arduino.h>
 
-// Rover run/stop state + selected trajectory, shared between the web server
-// task and main.cpp's loop(). See README.md.
+enum RoverOperationMode : uint8_t {
+    OPERATION_MODE_CAMERA = 0,
+    OPERATION_MODE_LANDMARK = 1,
+};
 
-enum RoverTrajectory {
-    TRAJ_SQUARE   = 0, // kept in firmware, hidden from the dashboard during PID validation
-    TRAJ_CIRCLE   = 1, // idem
-    TRAJ_FORWARD  = 2,
-    TRAJ_BACKWARD = 3,
-    TRAJ_RIGHT    = 4, // lateral slide
-    TRAJ_LEFT     = 5,
+enum RoverLandmark : uint8_t {
+    LANDMARK_NONE = 0,
+    LANDMARK_TOP_RIGHT,
+    LANDMARK_TOP_LEFT,
+    LANDMARK_DOWN_RIGHT,
+    LANDMARK_DOWN_LEFT,
+    LANDMARK_CENTER,
+};
+
+struct RoverControlState {
+    RoverOperationMode mode;
+    RoverLandmark landmark;
+    uint32_t modeRevision;
+    uint32_t idleRevision;
+    bool running;
 };
 
 void control_init();
 
+void control_selectMode(RoverOperationMode mode, RoverLandmark landmark = LANDMARK_NONE);
 void control_start();
-void control_stop();
-bool control_isRunning();
-
-void control_setTrajectory(RoverTrajectory t);
-RoverTrajectory control_getTrajectory();
+void control_idle();
+RoverControlState control_getState();

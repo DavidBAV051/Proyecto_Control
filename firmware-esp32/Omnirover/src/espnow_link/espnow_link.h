@@ -1,5 +1,14 @@
 #pragma once
 #include <Arduino.h>
+#include "control.h"
 
-// Sets up ESP-NOW per ROVER_LINK_MODE (net_config.h); see README.md for the 3 modes.
+enum EspNowControlCommand : uint8_t {
+    ESPNOW_CONTROL_MODE = 1,
+    ESPNOW_CONTROL_START,
+    ESPNOW_CONTROL_IDLE,
+};
+
 void espNow_init();
+void espNow_sendControl(EspNowControlCommand command,
+                        RoverOperationMode mode = OPERATION_MODE_CAMERA,
+                        RoverLandmark landmark = LANDMARK_NONE);

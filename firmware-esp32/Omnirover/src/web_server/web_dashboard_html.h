@@ -147,19 +147,26 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
   .btn:hover { background: rgba(0, 113, 227, .18); }
 
   /* Rover control card */
-  select#trajectorySelect {
-    padding: 9px 10px; border-radius: 10px; border: 1px solid var(--card-border);
+  .control-fields { display: grid; gap: 10px; }
+  .control-field { display: grid; gap: 5px; }
+  .control-field span { font-size: .75rem; color: var(--text-secondary); }
+  .control-field select {
+    width: 100%; padding: 9px 10px; border-radius: 10px; border: 1px solid var(--card-border);
     font-size: .9rem; font-family: inherit; color: var(--text); background: var(--card-bg);
   }
-  .control-row { display: flex; gap: 10px; align-items: center; }
-  .control-row select#trajectorySelect { flex: 1; }
+  .control-row { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
   .control-row button.btn {
     flex: 1; border: none; font-family: inherit; font-size: .9rem;
   }
   #startBtn { background: var(--green-soft); color: var(--green); }
   #startBtn:hover { background: rgba(52, 199, 89, .2); }
-  #stopBtn { background: rgba(255, 59, 48, .12); color: var(--red); }
-  #stopBtn:hover { background: rgba(255, 59, 48, .2); }
+  #idleBtn { background: rgba(255, 59, 48, .12); color: var(--red); }
+  #idleBtn:hover { background: rgba(255, 59, 48, .2); }
+  .target-readout {
+    display: flex; justify-content: space-between; margin-top: 12px;
+    padding-top: 10px; border-top: 1px solid var(--card-border);
+    font-size: .8rem; color: var(--text-secondary);
+  }
   #resetPoseBtn, #resetYawBtn {
     width: 100%; margin-top: 10px; background: #f2f2f4; color: var(--text-secondary);
   }
@@ -192,11 +199,17 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
   <div class="card card-cam">
     <h2>Person Tracking</h2>
     <span class="status-pill" id="camStatus"><span class="status-dot"></span><span id="camStatusText">Not Tracking</span></span>
-    <canvas id="camCanvas" width="260" height="195"></canvas>
+    <canvas id="camCanvas" width="260" height="146"></canvas>
     <div class="coords">
       <div class="coord"><div class="label">X</div><div class="value" id="camX">--</div></div>
       <div class="coord"><div class="label">Y</div><div class="value" id="camY">--</div></div>
     </div>
+    <div class="target-readout"><span>Target</span><span class="val" id="camTarget">NONE</span></div>
+    <div class="target-readout"><span>Arrived</span><span class="val" id="camArrived">NO</span></div>
+    <div class="target-readout"><span>UART READY / START</span><span class="val" id="linkHandshake">NO / NO</span></div>
+    <div class="target-readout"><span>TEL state / age</span><span class="val" id="linkTel">NONE / --</span></div>
+    <div class="target-readout"><span>UART issue</span><span class="val" id="linkIssue">WAIT_MODE</span></div>
+    <div class="target-readout"><span>Wheels rad/s</span><span class="val" id="linkWheels">--</span></div>
   </div>
 
   <div class="card card-pose">
@@ -209,16 +222,29 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTMLPAGE(
   </div>
 
   <div class="card card-control">
-    <h2>Rover Control</h2>
+    <h2>SAOAH Operation</h2>
+    <div class="control-fields">
+      <label class="control-field">
+        <span>Mode</span>
+        <select id="modeSelect">
+          <option value="CAMERA">CAMERA</option>
+          <option value="LANDMARK">LANDMARK</option>
+        </select>
+      </label>
+      <label class="control-field" id="landmarkField" hidden>
+        <span>Landmark</span>
+        <select id="landmarkSelect">
+          <option value="TOP_RIGHT">TOP_RIGHT</option>
+          <option value="TOP_LEFT">TOP_LEFT</option>
+          <option value="DOWN_RIGHT">DOWN_RIGHT</option>
+          <option value="DOWN_LEFT">DOWN_LEFT</option>
+          <option value="CENTER">CENTER</option>
+        </select>
+      </label>
+    </div>
     <div class="control-row">
-      <select id="trajectorySelect">
-        <option value="forward">Forward</option>
-        <option value="backward">Backward</option>
-        <option value="right">Right (slide)</option>
-        <option value="left">Left (slide)</option>
-      </select>
-      <button class="btn" id="startBtn">Start</button>
-      <button class="btn" id="stopBtn">Stop</button>
+      <button class="btn" id="startBtn">START</button>
+      <button class="btn" id="idleBtn">IDLE</button>
     </div>
   </div>
 </div>
@@ -466,7 +492,7 @@ function fmt(n) { return (typeof n === 'number') ? n.toFixed(2) : '--'; }
 // ---- Person tracking module ----
 const camCanvas = $('camCanvas');
 const camCtx = camCanvas.getContext('2d');
-const CAM_FRAME_W = 320, CAM_FRAME_H = 240; // default HuskyLens frame resolution
+const CAM_FRAME_W = 1920, CAM_FRAME_H = 1080;
 
 function drawCamBox(cam) {
   const w = camCanvas.width, h = camCanvas.height;
@@ -491,15 +517,50 @@ function renderCam(cam) {
   $('camStatusText').textContent = cam.valid ? 'Tracking' : 'Not Tracking';
   $('camX').textContent = cam.valid ? cam.x : '--';
   $('camY').textContent = cam.valid ? cam.y : '--';
+  $('camTarget').textContent = cam.target || 'NONE';
+  $('camArrived').textContent = cam.arrived ? 'YES' : 'NO';
   drawCamBox(cam);
 }
 
+function renderLink(link) {
+  if (!link) return;
+  $('linkHandshake').textContent = (link.ready ? 'YES' : 'NO') + ' / ' + (link.started ? 'YES' : 'NO');
+  $('linkTel').textContent = (link.state || 'NONE') + ' / ' + (link.telReceived ? link.telAgeMs + ' ms' : '--');
+  $('linkIssue').textContent = (link.issue || 'UNKNOWN') + (link.fresh ? '' : ' [STALE]');
+  $('linkWheels').textContent = Array.isArray(link.wheels)
+    ? link.wheels.map(value => Number(value).toFixed(2)).join(', ')
+    : '--';
+}
+
 // ---- Rover control module ----
-$('startBtn').addEventListener('click', () => fetch('/control?cmd=start'));
-$('stopBtn').addEventListener('click', () => fetch('/control?cmd=stop'));
-$('trajectorySelect').addEventListener('change', (evt) => {
-  fetch('/control?trajectory=' + evt.target.value);
+function selectedModeUrl() {
+  const mode = $('modeSelect').value;
+  const landmark = $('landmarkSelect').value;
+  let url = '/control?mode=' + encodeURIComponent(mode);
+  if (mode === 'LANDMARK') url += '&landmark=' + encodeURIComponent(landmark);
+  return url;
+}
+
+async function sendModeSelection() {
+  return fetch(selectedModeUrl());
+}
+
+function updateLandmarkVisibility() {
+  $('landmarkField').hidden = $('modeSelect').value !== 'LANDMARK';
+}
+
+$('modeSelect').addEventListener('change', async () => {
+  updateLandmarkVisibility();
+  await sendModeSelection();
 });
+$('landmarkSelect').addEventListener('change', sendModeSelection);
+$('startBtn').addEventListener('click', async () => {
+  await sendModeSelection();
+  await fetch('/control?cmd=start');
+});
+$('idleBtn').addEventListener('click', () => fetch('/control?cmd=idle'));
+updateLandmarkVisibility();
+
 $('resetPoseBtn').addEventListener('click', () => {
   fetch('/control?cmd=resetPose');
   // Clear the local trail immediately instead of waiting for the next telemetry
@@ -515,6 +576,7 @@ function applyTelemetry(d) {
   $('uptime').textContent = 'uptime ' + (d.t / 1000).toFixed(1) + ' s';
   renderPose(d.imu, d.pose);
   renderCam(d.cam);
+  renderLink(d.link);
   renderSpeeds(d.t, d.enc);
 }
 

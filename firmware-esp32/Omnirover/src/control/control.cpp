@@ -1,8 +1,13 @@
 #include "control.h"
 
 static SemaphoreHandle_t g_mutex = nullptr;
-static bool g_running = false;
-static RoverTrajectory g_trajectory = TRAJ_FORWARD; // matches the dashboard's default <select> option
+static RoverControlState g_state = {
+    OPERATION_MODE_CAMERA,
+    LANDMARK_NONE,
+    0,
+    0,
+    false,
+};
 
 void control_init() {
     if (!g_mutex) {
@@ -10,34 +15,37 @@ void control_init() {
     }
 }
 
+void control_selectMode(RoverOperationMode mode, RoverLandmark landmark) {
+    if (mode == OPERATION_MODE_CAMERA) {
+        landmark = LANDMARK_NONE;
+    } else if (landmark == LANDMARK_NONE) {
+        landmark = LANDMARK_CENTER;
+    }
+
+    xSemaphoreTake(g_mutex, portMAX_DELAY);
+    g_state.mode = mode;
+    g_state.landmark = landmark;
+    g_state.modeRevision++;
+    g_state.running = false;
+    xSemaphoreGive(g_mutex);
+}
+
 void control_start() {
     xSemaphoreTake(g_mutex, portMAX_DELAY);
-    g_running = true;
+    g_state.running = true;
     xSemaphoreGive(g_mutex);
 }
 
-void control_stop() {
+void control_idle() {
     xSemaphoreTake(g_mutex, portMAX_DELAY);
-    g_running = false;
+    g_state.running = false;
+    g_state.idleRevision++;
     xSemaphoreGive(g_mutex);
 }
 
-bool control_isRunning() {
+RoverControlState control_getState() {
     xSemaphoreTake(g_mutex, portMAX_DELAY);
-    bool running = g_running;
+    RoverControlState state = g_state;
     xSemaphoreGive(g_mutex);
-    return running;
-}
-
-void control_setTrajectory(RoverTrajectory t) {
-    xSemaphoreTake(g_mutex, portMAX_DELAY);
-    g_trajectory = t;
-    xSemaphoreGive(g_mutex);
-}
-
-RoverTrajectory control_getTrajectory() {
-    xSemaphoreTake(g_mutex, portMAX_DELAY);
-    RoverTrajectory t = g_trajectory;
-    xSemaphoreGive(g_mutex);
-    return t;
+    return state;
 }

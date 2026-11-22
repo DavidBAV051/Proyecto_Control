@@ -1,35 +1,28 @@
-# ESP-NOW link (transporte opcional rover <-> base)
+# ESP-NOW link (rover <-> base)
 
-Permite separar "quién lee los sensores" de "quién sirve el dashboard",
-usando ESP-NOW (protocolo peer-to-peer de Espressif, sin necesidad de router)
-como enlace entre dos placas ESP32.
+Separa el rover que ejecuta sensores, UART y PIDs de la placa que hospeda la GUI.
+El enlace es bidireccional:
 
-Archivos: [`espnow_link.h`](espnow_link.h), [`espnow_link.cpp`](espnow_link.cpp)
+- Rover -> base: telemetría fija con IMU, encoders, pose y estado de TEL
+  (`tracking`, `target`, coordenadas y `arrived`).
+- Base -> rover: comandos `MODE`, `START` e `IDLE` con el landmark seleccionado.
 
-## 3 modos (elegidos en build time con `ROVER_LINK_MODE`, `include/net_config.h`)
+## Perfiles
 
-| Modo | Qué hace esta placa |
+| Modo | Responsabilidad |
 |---|---|
-| `LINK_MODE_LOCAL` (default) | Lee sensores y sirve el dashboard, todo en una sola placa. `espNow_init()` es un no-op. |
-| `LINK_MODE_ESPNOW_ROVER` | Lee sensores reales, NO sirve dashboard; empaqueta `RoverTelemetry` en un `EspNowPacket` fijo (<250 bytes, límite de ESP-NOW) y lo envía por radio cada `TELEMETRY_BROADCAST_INTERVAL_MS` a `ESPNOW_PEER_MAC`. |
-| `LINK_MODE_ESPNOW_BASE` | No tiene sensores; registra un callback que recibe paquetes y los vuelca a `telemetry_setIMU/Cam/Encoder()`, y sirve el mismo dashboard HTML de siempre sobre su propio WiFi AP. |
+| `LINK_MODE_LOCAL` (0) | Rover y GUI en una sola placa. |
+| `LINK_MODE_ESPNOW_ROVER` (1) | Sin servidor web; transmite telemetría y recibe comandos. |
+| `LINK_MODE_ESPNOW_BASE` (2) | Sin sensores ni motores; sirve GUI, transmite comandos y recibe telemetría. |
 
-Para probar un modo sin editar archivos:
-`$env:PLATFORMIO_BUILD_FLAGS="-D ROVER_LINK_MODE=1"; pio run` (1 = ESPNOW_ROVER, 2 = ESPNOW_BASE).
+Compilar rover/base sin editar el proyecto:
 
-## Por qué un struct "plano" (`EspNowPacket`)
+```powershell
+$env:PLATFORMIO_BUILD_FLAGS="-DROVER_LINK_MODE=1"; pio run
+$env:PLATFORMIO_BUILD_FLAGS="-DROVER_LINK_MODE=2"; pio run
+```
 
-ESP-NOW limita el payload a 250 bytes y no serializa structs con punteros o
-tamaño variable — por eso `EspNowPacket` es una copia fija de los campos de
-`RoverTelemetry` (sin JSON, sin `String`), armada con `memcpy`.
-
-## Detalles no obvios
-
-- `WiFi.mode(WIFI_STA)` se necesita aunque no haya AP/router — ESP-NOW
-  requiere que el driver WiFi esté levantado.
-- La firma del callback de recepción (`onDataRecv`) cambió entre
-  arduino-esp32 core 2.x y 3.x (IDF5); el `#if ESP_ARDUINO_VERSION_MAJOR >= 3`
-  cubre ambas.
-- `ESPNOW_PEER_MAC` en `net_config.h` todavía es la dirección broadcast
-  (`FF:FF:FF:FF:FF:FF`) — reemplazar por la MAC real del par una vez
-  conocida, para no transmitir a todos los receptores ESP-NOW del canal.
+Los payloads siguen siendo structs planos menores de 250 bytes. La base usa
+`WIFI_AP_STA` para conservar simultáneamente el access point y ESP-NOW; el rover
+usa modo STA. `ESPNOW_PEER_MAC` debe cambiarse de broadcast a las MAC reales del
+par en `include/net_config.h` cuando se cierre la instalación.

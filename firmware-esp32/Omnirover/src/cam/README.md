@@ -1,40 +1,33 @@
-# Cámara (Raspberry Pi 4 por UART)
+# Cámara y control (Raspberry Pi 4 por UART)
 
-Enlace serie con una Raspberry Pi 4 que corre la visión por computadora
-(seguimiento de persona) y manda las detecciones al ESP32 por UART2.
-Reemplaza al HuskyLens (librería y código retirados el 2026-11-12).
-
-Archivos: [`cam.h`](cam.h), [`cam.cpp`](cam.cpp)
+Implementa `SAOAH_UART_V2` entre la Raspberry Pi 4 y el ESP32 por UART2. Cada
+mensaje es un JSON compacto terminado en `\n`, a 115200 baud, 8N1. El parser
+usa ArduinoJson y drena el UART sin bloqueo desde `loop()`.
 
 ## Cableado
 
 | Pi 4 | ESP32 | Nota |
 |---|---|---|
-| GPIO14 (TXD) | GPIO16 (RX2) | `PI_UART_RX_PIN` en `include/pins.h` |
+| GPIO14 (TXD) | GPIO16 (RX2) | `PI_UART_RX_PIN` |
 | GPIO15 (RXD) | GPIO17 (TX2) | `PI_UART_TX_PIN` |
 | GND | GND | común en el punto estrella de la alimentación |
 
-Ambos lados son lógica de 3.3 V: sin level shifter. Baud `PI_UART_BAUD`
-(115200). En la Pi usar el PL011 (`dtoverlay=disable-bt` → `/dev/ttyAMA0`),
-no el mini-UART: su baud deriva con el reloj del CPU y una Pi haciendo CV
-está throttleando todo el tiempo.
+## Secuencia ESP32 -> Pi
 
-## Estado actual: eco crudo por USB
+1. Al elegir modo: `{"type":"MODE","mode":"CAMERA"}` o
+   `{"type":"MODE","mode":"LANDMARK","landmark":"TOP_RIGHT"}`.
+2. Se espera `READY` con protocolo, modo, landmark y `motion:true` coincidentes.
+3. Tras `READY` y START del usuario: `{"type":"START"}`.
+4. Con 25 Hz: `{"type":"POSE","x":0.512,"y":-0.230,"theta":1.5708}`.
+5. IDLE envía `{"type":"IDLE"}`.
 
-- `cam_init()` abre UART2; `cam_poll()` (llamado cada `loop()`) drena el
-  puerto sin bloquear, junta bytes hasta `\n`/`\r` y escribe cada línea
-  completa tal cual en el monitor serie USB. Líneas de más de 128 bytes sin
-  terminador se descartan.
-- **El monitor USB está reservado para este eco**: todos los demás
-  `Serial.print` del firmware (IMU, reset reason, WiFi, WS, safe-start) se
-  quitaron para que lo único que aparezca sea lo que manda la Pi. Si el
-  BNO08x no responde en `setup()` el firmware se queda en un `while(1)`
-  silencioso.
-- Todavía no se parsea nada: el dashboard sigue mostrando
-  `telemetry_simulateCam()`.
+## Secuencia Pi -> ESP32
 
-## Siguiente paso
+`TEL` aporta `tracking`, `target`, coordenadas, `arrived` y `wheels` en rad/s.
+Los cuatro valores se copian directamente a los setpoints de los PIDs. Cualquier
+TEL con estado `STOP`/`IDLE`, `wheels` inválido o ausencia de TEL durante más de
+500 ms deja los cuatro setpoints en cero.
 
-Definir el formato de línea con la Pi (p. ej. `T,x,y,w,h` / `N`) y en
-`cam_poll()` convertirlo a `CamData` (`telemetry.h`) → `telemetry_setCam()`,
-quitando `telemetry_simulateCam()` de `web_server.cpp`.
+El parser descarta líneas de más de 512 bytes y limpia fragmentos incompletos.
+`tracking`, `target`, `tag_x`, `tag_y` y `arrived` se publican en `CamData` para
+la GUI local o por ESP-NOW.

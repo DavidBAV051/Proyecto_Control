@@ -1,38 +1,24 @@
-# Telemetría (estado compartido + serialización JSON)
+# Telemetría (estado compartido + JSON de dashboard)
 
-Único punto de verdad para "qué está pasando en el rover ahora mismo" (IMU,
-cámara, encoders, pose), leído/escrito de forma segura entre tareas FreeRTOS
-(IMU y encoders se actualizan desde `loop()`/`telemetryTask`, el servidor web
-y ESP-NOW leen desde sus propias tareas).
+Único snapshot thread-safe de IMU, cámara, encoders y pose. El snapshot se usa
+por el servidor WebSocket y por el emisor ESP-NOW.
 
-Archivos: [`telemetry.h`](telemetry.h), [`telemetry.cpp`](telemetry.cpp)
+`CamData` contiene datos reales de `TEL`: `tracking` (`valid`), `target`, `x`,
+`y`, ancho y `arrived`. Los encoders almacenan posición, RPM medida y setpoint
+activo; la pose usa metros calculados por odometría.
 
-## Qué guarda (`RoverTelemetry`)
+Los productores escriben desde `main.cpp` (`uptime`, IMU, encoders, pose) y
+`cam.cpp` (TEL). En la placa base, los mismos setters reciben los structs de
+ESP-NOW. No existe telemetría de cámara simulada.
 
-- `imu` (`IMU_Data`, ver `src/imu/`)
-- `cam` (`CamData`, placeholder simulado hasta que `src/cam/` esté integrado)
-- `encoders[4]` (`EncoderData`: posición en pulsos + RPM medida + RPM setpoint del PID, ver `src/motors/`)
-- `pose` (`PoseData`: x/y en metros, ver `src/odometry/`)
-
-Todo protegido por un único mutex (`g_mutex`); `telemetry_get()` devuelve una
-copia completa (snapshot), no una referencia, para que el llamador no tenga
-que mantener el lock mientras la usa.
-
-## API
-
-- `telemetry_init()`: crea el mutex (llamar una vez, antes de usar lo demás).
-- `telemetry_setIMU/Cam/Encoder/Pose(...)`: setters thread-safe, llamados
-  desde donde se produce cada dato real (`imu.cpp`, `motors.cpp`,
-  `odometry.cpp`) o desde `espnow_link.cpp` en modo `LINK_MODE_ESPNOW_BASE`.
-- `telemetry_get()`: snapshot completo, usado por el dashboard y por el envío
-  ESP-NOW.
-- `telemetry_toJson()`: serializa el snapshot a un JSON compacto
-  (`ArduinoJson`) que el dashboard consume por WebSocket.
-- `telemetry_simulateCam()`: genera una detección falsa (seno/coseno) porque
-  el enlace UART con la Raspberry Pi (`src/cam/`) todavía no se parsea — quitar cuando lo esté.
-
-## Formato JSON (ver `telemetry_toJson()`)
+`telemetry_toJson()` publica, entre otros campos:
 
 ```json
-{ "t": 12345, "imu": {...}, "cam": {...}, "enc": [{"pos":.., "vel":.., "sp":..}, ...], "pose": {"x":.., "y":..} }
+{
+  "t": 12345,
+  "imu": {},
+  "cam": {"valid": true, "target": "DAVID", "x": 1500, "y": 400, "arrived": false},
+  "enc": [{"pos": 0, "vel": 0, "sp": 0}],
+  "pose": {"x": 0.512, "y": -0.23}
+}
 ```

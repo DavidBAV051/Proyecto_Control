@@ -1,33 +1,16 @@
-# Control (estado run/stop + trayectoria seleccionada)
+# Control (modo, landmark y estado START/IDLE)
 
-Guarda el estado compartido que el dashboard usa para arrancar/detener al
-rover y elegir qué trayectoria demo corre, de forma segura entre tareas
-FreeRTOS (el servidor web corre en una tarea, `loop()` en otra).
+Guarda, entre tareas FreeRTOS, la solicitud que llega desde el dashboard local
+o desde ESP-NOW.
 
-Archivos: [`control.h`](control.h), [`control.cpp`](control.cpp)
+## Estado compartido
 
-## Qué guarda
+- `mode`: `CAMERA` o `LANDMARK`.
+- `landmark`: `TOP_RIGHT`, `TOP_LEFT`, `DOWN_RIGHT`, `DOWN_LEFT` o `CENTER`.
+- `modeRevision`: permite que `main.cpp` envíe un único `MODE` por selección.
+- `idleRevision`: permite reenviar IDLE aunque el rover ya esté detenido.
+- `running`: el usuario dio START; el motor no se activa hasta que UART confirme READY.
 
-- `g_running` (bool): si el rover debe estar ejecutando la trayectoria activa.
-- `g_trajectory` (`RoverTrajectory`): `TRAJ_FORWARD` (default), `TRAJ_BACKWARD`,
-  `TRAJ_RIGHT`, `TRAJ_LEFT` (movimientos continuos, sin pasos — ver
-  `main.cpp::loop()`), más `TRAJ_SQUARE` / `TRAJ_CIRCLE` que siguen en firmware
-  pero están ocultas del dashboard mientras se valida el PID de rueda.
-
-Ambos protegidos por un mutex (`g_mutex`) porque se escriben desde el handler
-HTTP `/control` (tarea del servidor web, ver `web_server.cpp`) y se leen desde
-`loop()` (`main.cpp`) en cada iteración.
-
-## Flujo real
-
-1. El dashboard llama `GET /control?cmd=start` o `?trajectory=circle`.
-2. `web_server.cpp` traduce eso a `control_start()` / `control_stop()` /
-   `control_setTrajectory()`.
-3. `main.cpp::loop()` pregunta `control_isRunning()` / `control_getTrajectory()`
-   cada ciclo y decide si llamar `runSquareTrajectory()` o `moveCircle()`.
-
-## Nota
-
-Este módulo solo guarda estado — no mueve motores ni conoce las trayectorias
-en sí; esa lógica vive en `main.cpp` (`moveForward`/`moveCircle`/
-`runSquareTrajectory`/etc.).
+Todo el estado se protege con un mutex. `main.cpp` toma un snapshot por ciclo:
+primero procesa cambios de modo/IDLE, después el handshake y finalmente los
+setpoints de `TEL.wheels`. Este módulo no genera ni modifica velocidades.

@@ -10,6 +10,12 @@ void telemetry_init() {
     }
 }
 
+void telemetry_setUptime(uint32_t uptimeMs) {
+    xSemaphoreTake(g_mutex, portMAX_DELAY);
+    g_telemetry.uptimeMs = uptimeMs;
+    xSemaphoreGive(g_mutex);
+}
+
 void telemetry_setIMU(const IMU_Data &data) {
     xSemaphoreTake(g_mutex, portMAX_DELAY);
     g_telemetry.imu = data;
@@ -36,29 +42,17 @@ void telemetry_setPose(float x, float y) {
     xSemaphoreGive(g_mutex);
 }
 
+void telemetry_setPiLink(const PiLinkStatus &data) {
+    xSemaphoreTake(g_mutex, portMAX_DELAY);
+    g_telemetry.piLink = data;
+    xSemaphoreGive(g_mutex);
+}
+
 RoverTelemetry telemetry_get() {
     xSemaphoreTake(g_mutex, portMAX_DELAY);
     RoverTelemetry snapshot = g_telemetry;
     xSemaphoreGive(g_mutex);
     return snapshot;
-}
-
-void telemetry_simulateCam() {
-    uint32_t t = millis();
-    float phase = t / 1000.0f;
-
-    CamData cam;
-    cam.valid  = true;
-    cam.id     = 1;
-    cam.x      = 160 + (int16_t)(100 * sinf(phase * 0.8f));
-    cam.y      = 120 + (int16_t)(60 * cosf(phase * 0.8f));
-    cam.width  = 40;
-    cam.height = 40;
-    telemetry_setCam(cam);
-
-    xSemaphoreTake(g_mutex, portMAX_DELAY);
-    g_telemetry.uptimeMs = t;
-    xSemaphoreGive(g_mutex);
 }
 
 String telemetry_toJson() {
@@ -80,10 +74,12 @@ String telemetry_toJson() {
     JsonObject cam = doc["cam"].to<JsonObject>();
     cam["valid"] = snap.cam.valid;
     cam["id"]    = snap.cam.id;
-    cam["x"]     = snap.cam.x;
-    cam["y"]     = snap.cam.y;
-    cam["w"]     = snap.cam.width;
-    cam["h"]     = snap.cam.height;
+    cam["x"]       = snap.cam.x;
+    cam["y"]       = snap.cam.y;
+    cam["w"]       = snap.cam.width;
+    cam["h"]       = snap.cam.height;
+    cam["target"]  = snap.cam.target;
+    cam["arrived"] = snap.cam.arrived;
 
     JsonArray enc = doc["enc"].to<JsonArray>();
     for (uint8_t m = 0; m < TELEMETRY_NUM_MOTORS; m++) {
@@ -96,6 +92,20 @@ String telemetry_toJson() {
     JsonObject pose = doc["pose"].to<JsonObject>();
     pose["x"] = snap.pose.x;
     pose["y"] = snap.pose.y;
+
+    JsonObject link = doc["link"].to<JsonObject>();
+    link["ready"] = snap.piLink.ready;
+    link["started"] = snap.piLink.started;
+    link["telReceived"] = snap.piLink.telReceived;
+    link["fresh"] = snap.piLink.fresh;
+    link["wheelsAccepted"] = snap.piLink.wheelsAccepted;
+    link["telAgeMs"] = snap.piLink.telAgeMs;
+    link["state"] = snap.piLink.state;
+    link["issue"] = snap.piLink.issue;
+    JsonArray wheels = link["wheels"].to<JsonArray>();
+    for (float wheel : snap.piLink.wheelsRadS) {
+        wheels.add(wheel);
+    }
 
     String out;
     serializeJson(doc, out);

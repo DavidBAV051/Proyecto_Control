@@ -6,59 +6,29 @@
 #include <esp_now.h>
 #include "telemetry.h"
 
-// Flat, fixed-size mirror of RoverTelemetry (ESP-NOW payload cap is 250 bytes).
+static const uint8_t ESPNOW_TELEMETRY_TYPE = 0xA1;
+static const uint8_t ESPNOW_COMMAND_TYPE = 0xC1;
+
 struct EspNowPacket {
-    uint32_t    uptimeMs;
-    IMU_Data    imu;
-    CamData     cam;
-    EncoderData encoders[TELEMETRY_NUM_MOTORS];
+    uint8_t     type = ESPNOW_TELEMETRY_TYPE;
+    uint32_t    uptimeMs = 0;
+    IMU_Data    imu = {};
+    CamData     cam = {};
+    EncoderData  encoders[TELEMETRY_NUM_MOTORS] = {};
+    PoseData     pose = {};
+    PiLinkStatus piLink = {};
 };
 
-#if ROVER_LINK_MODE == LINK_MODE_ESPNOW_BASE
-// Core 3.x (IDF5) vs 2.x have different recv-callback signatures.
-#if ESP_ARDUINO_VERSION_MAJOR >= 3
-static void onDataRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
-    (void)info;
-#else
-static void onDataRecv(const uint8_t *macAddr, const uint8_t *data, int len) {
-    (void)macAddr;
-#endif
-    if (len != sizeof(EspNowPacket)) return;
-    EspNowPacket pkt;
-    memcpy(&pkt, data, sizeof(pkt));
-    telemetry_setIMU(pkt.imu);
-    telemetry_setCam(pkt.cam);
-    for (uint8_t m = 0; m < TELEMETRY_NUM_MOTORS; m++) {
-        telemetry_setEncoder(m, pkt.encoders[m]);
-    }
-}
-#else
-static void espNowSendTask(void *param) {
-    (void)param;
-    for (;;) {
-        RoverTelemetry snap = telemetry_get();
-        EspNowPacket pkt;
-        pkt.uptimeMs = snap.uptimeMs;
-        pkt.imu = snap.imu;
-        pkt.cam = snap.cam;
-        memcpy(pkt.encoders, snap.encoders, sizeof(pkt.encoders));
-        esp_now_send(ESPNOW_PEER_MAC, reinterpret_cast<uint8_t *>(&pkt), sizeof(pkt));
-        vTaskDelay(pdMS_TO_TICKS(TELEMETRY_BROADCAST_INTERVAL_MS));
-    }
-}
-#endif
+static_assert(sizeof(EspNowPacket) <= 250, "ESP-NOW telemetry packet exceeds protocol limit");
 
-void espNow_init() {
-    WiFi.mode(WIFI_STA); // required by ESP-NOW even without an AP/router
+struct EspNowCommandPacket {
+    uint8_t              type = ESPNOW_COMMAND_TYPE;
+    EspNowControlCommand command = ESPNOW_CONTROL_IDLE;
+    RoverOperationMode   mode = OPERATION_MODE_CAMERA;
+    RoverLandmark        landmark = LANDMARK_NONE;
+};
 
-    if (esp_now_init() != ESP_OK) {
-        return;
-    }
-
-#if ROVER_LINK_MODE == LINK_MODE_ESPNOW_BASE
-    telemetry_init();
-    esp_now_register_recv_cb(onDataRecv);
-#else
+static void addPeer() {
     esp_now_peer_info_t peer = {};
     memcpy(peer.peer_addr, ESPNOW_PEER_MAC, 6);
     peer.channel = WIFI_AP_CHANNEL;
@@ -66,12 +36,101 @@ void espNow_init() {
     if (!esp_now_is_peer_exist(ESPNOW_PEER_MAC)) {
         esp_now_add_peer(&peer);
     }
+}
+
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+static void onDataRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
+    (void)info;
+#else
+static void onDataRecv(const uint8_t *macAddr, const uint8_t *data, int len) {
+    (void)macAddr;
+#endif
+#if ROVER_LINK_MODE == LINK_MODE_ESPNOW_BASE
+    if (len != sizeof(EspNowPacket)) return;
+    EspNowPacket packet;
+    memcpy(&packet, data, sizeof(packet));
+    if (packet.type != ESPNOW_TELEMETRY_TYPE) return;
+    telemetry_setUptime(packet.uptimeMs);
+    telemetry_setIMU(packet.imu);
+    telemetry_setCam(packet.cam);
+    telemetry_setPose(packet.pose.x, packet.pose.y);
+    telemetry_setPiLink(packet.piLink);
+    for (uint8_t motor = 0; motor < TELEMETRY_NUM_MOTORS; motor++) {
+        telemetry_setEncoder(motor, packet.encoders[motor]);
+    }
+#else
+    if (len != sizeof(EspNowCommandPacket)) return;
+    EspNowCommandPacket packet;
+    memcpy(&packet, data, sizeof(packet));
+    if (packet.type != ESPNOW_COMMAND_TYPE) return;
+    if (packet.command == ESPNOW_CONTROL_MODE) {
+        control_selectMode(packet.mode, packet.landmark);
+    } else if (packet.command == ESPNOW_CONTROL_START) {
+        control_start();
+    } else if (packet.command == ESPNOW_CONTROL_IDLE) {
+        control_idle();
+    }
+#endif
+}
+
+#if ROVER_LINK_MODE == LINK_MODE_ESPNOW_ROVER
+static void espNowSendTask(void *param) {
+    (void)param;
+    for (;;) {
+        RoverTelemetry snap = telemetry_get();
+        EspNowPacket packet;
+        packet.uptimeMs = snap.uptimeMs;
+        packet.imu = snap.imu;
+        packet.cam = snap.cam;
+        packet.pose = snap.pose;
+        packet.piLink = snap.piLink;
+        memcpy(packet.encoders, snap.encoders, sizeof(packet.encoders));
+        esp_now_send(ESPNOW_PEER_MAC, reinterpret_cast<uint8_t *>(&packet), sizeof(packet));
+        vTaskDelay(pdMS_TO_TICKS(TELEMETRY_BROADCAST_INTERVAL_MS));
+    }
+}
+#endif
+
+void espNow_init() {
+#if ROVER_LINK_MODE == LINK_MODE_ESPNOW_BASE
+    WiFi.mode(WIFI_AP_STA);
+#else
+    WiFi.mode(WIFI_STA);
+#endif
+
+    if (esp_now_init() != ESP_OK) return;
+    addPeer();
+    esp_now_register_recv_cb(onDataRecv);
+
+#if ROVER_LINK_MODE == LINK_MODE_ESPNOW_ROVER
     xTaskCreatePinnedToCore(espNowSendTask, "espnow_tx", 4096, nullptr, 1, nullptr, 0);
 #endif
 }
 
+void espNow_sendControl(EspNowControlCommand command,
+                        RoverOperationMode mode,
+                        RoverLandmark landmark) {
+#if ROVER_LINK_MODE == LINK_MODE_ESPNOW_BASE
+    EspNowCommandPacket packet;
+    packet.command = command;
+    packet.mode = mode;
+    packet.landmark = landmark;
+    esp_now_send(ESPNOW_PEER_MAC, reinterpret_cast<uint8_t *>(&packet), sizeof(packet));
 #else
-void espNow_init() {
-    // LINK_MODE_LOCAL: nothing to do, sensors+dashboard are on this same board.
+    (void)command;
+    (void)mode;
+    (void)landmark;
+#endif
+}
+
+#else
+void espNow_init() {}
+
+void espNow_sendControl(EspNowControlCommand command,
+                        RoverOperationMode mode,
+                        RoverLandmark landmark) {
+    (void)command;
+    (void)mode;
+    (void)landmark;
 }
 #endif
